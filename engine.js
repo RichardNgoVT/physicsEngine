@@ -114,6 +114,7 @@ var part = function(e1, e2){
     this.kF = 0.1;//kinetic friction
     this.bounce = 0.10;
     this.width = 10;
+    this.parallelS = true;//parallel sides
 };
 
 var joint = function(x, y){
@@ -211,7 +212,7 @@ body.prototype.drawLimbs = function(){
     noStroke();
     for(var i = 0; i < this.parts.length; i++){
         fill(this.parts[i].color[0], this.parts[i].color[1], this.parts[i].color[2]);
-        quad(this.parts[i].vertexs.getPoint(0).x, this.parts[i].vertexs.getPoint(0).y, this.parts[i].vertexs.getPoint(2).x, this.parts[i].vertexs.getPoint(2).y, this.parts[i].vertexs.getPoint(3).x, this.parts[i].vertexs.getPoint(3).y, this.parts[i].vertexs.getPoint(1).x, this.parts[i].vertexs.getPoint(1).y);
+        quad(this.parts[i].vertexs.getPoint(0).x, this.parts[i].vertexs.getPoint(0).y, this.parts[i].vertexs.getPoint(1).x, this.parts[i].vertexs.getPoint(1).y, this.parts[i].vertexs.getPoint(2).x, this.parts[i].vertexs.getPoint(2).y, this.parts[i].vertexs.getPoint(3).x, this.parts[i].vertexs.getPoint(3).y);
     }
 };
 
@@ -313,10 +314,11 @@ body.prototype.updateParts = function(){
         nrm = getNrmUV(ends[0],ends[1]);
         this.parts[i].pos.x=(ends[0].x+ends[1].x)/2;
         this.parts[i].pos.y=(ends[0].y+ends[1].y)/2;
-        this.parts[i].vertexs.setPointX(0,ends[0].x+nrm.x*this.parts[i].width/2);
-        this.parts[i].vertexs.setPointY(0,ends[0].y+nrm.y*this.parts[i].width/2);
-        this.parts[i].vertexs.setPointX(1,ends[0].x-nrm.x*this.parts[i].width/2);
-        this.parts[i].vertexs.setPointY(1,ends[0].y-nrm.y*this.parts[i].width/2);
+
+        this.parts[i].vertexs.setPointX(0,ends[0].x-nrm.x*this.parts[i].width/2);
+        this.parts[i].vertexs.setPointY(0,ends[0].y-nrm.y*this.parts[i].width/2);
+        this.parts[i].vertexs.setPointX(1,ends[0].x+nrm.x*this.parts[i].width/2);
+        this.parts[i].vertexs.setPointY(1,ends[0].y+nrm.y*this.parts[i].width/2);
         this.parts[i].vertexs.setPointX(2,ends[1].x+nrm.x*this.parts[i].width/2);
         this.parts[i].vertexs.setPointY(2,ends[1].y+nrm.y*this.parts[i].width/2);
         this.parts[i].vertexs.setPointX(3,ends[1].x-nrm.x*this.parts[i].width/2);
@@ -349,13 +351,189 @@ body.prototype.getVertexVelo = function(contact){
     return new PVector(endPoint.x-startPoint.x,endPoint.y-startPoint.y);
 };
 
-game.prototype.collideActvAct = function(id, id){
+game.prototype.collideActvAct = function(contacts){
+    for(var i = 0; i<contacts.length; i++){
+        var id1 = contacts[i][0];
+        var p1 = contacts[i][1];
+        var id2 = contacts[i][2];
+        var p2 = contacts[i][3];
+
+        
+        this.actors[id1].parts[p1].color[0] = 245;
+        this.actors[id1].parts[p1].color[1] = 233;
+        this.actors[id1].parts[p1].color[2] = 66;
+  
+        this.actors[id2].parts[p2].color[0] = 245;
+        this.actors[id2].parts[p2].color[0] = 164;
+        this.actors[id2].parts[p2].color[0] = 66;
+        
+    
+        
+    }
+};
+
+
+var checkUnbounded = function(vertexs, nrmDir, min, max){
+        for(var v = 0; v < vertexs.length; v++){
+            var bound = getDot(vertexs[v],nrmDir);
+            if(bound > min && bound < max){
+                return false;
+            }
+        }
+    
+    return true;
+    
+};
+
+var getBounds = function(vertexs, nrmDir){
+    var min = Infinity;
+    var max = -Infinity;
+    for(var v = 0; v < vertexs.length; v++){
+        var bound = getDot(nrmDir,vertexs.getPoint(v));
+        if(bound<min){
+            min = bound;
+        }
+        if(bound>max){
+            max = bound;
+        }
+    }
+    
+    return [min,max];
     
 };
 
 
+
 //sat collisions check
-game.prototype.checkActvAct = function(id, id){
+//unoptimized for squares 
+//(memory vs speed)
+//speed: save all bounds for own normals
+
+
+game.prototype.checkActvAct = function(id1, id2){
+    var body1 = this.actors[id1];
+    var body2 = this.actors[id2];
+    var contacts = [];
+    var collision = true;
+    var simple1 = 1;
+    var simple2 = 1;
+    
+    var nrmDirs1 = [];//might not be nessesary depending on algorithm
+    var bounds11 = [];
+    var bounds12 = [];
+    
+    var nrmDirs2 = [];
+    var bounds21 = [];
+    var bounds22 = [];
+    
+    
+    
+    for(var p1 = 0; p1 < body1.parts.length; p1++){
+        if(body1.parts[p1].parallelS){
+            simple1 = 2;
+        }
+        else{
+            simple1 = 1;
+        }
+        var vertexs1 = body1.parts[p1].vertexs;
+        var nrmDirs1 = [];
+        
+
+        for(var v1 = 0; v1 < vertexs1.length/simple1; v1++){
+            nrmDirs1.push(getNrmUV(vertexs1.getPoint(v1),vertexs1.getPoint((v1+1)%vertexs1.length)));
+        }
+        
+        
+        for(var n1 = 0; n1<nrmDirs1.length; n1++){
+            bounds11[n1]=getBounds(vertexs1,nrmDirs1[n1]);
+        }
+        
+        
+        
+        for(var p2 = 0; p2 < body2.parts.length; p2++){
+            if(body2.parts[p2].parallelS){
+                simple2 = 2;
+            }
+            else{
+                simple2 = 1;
+            }
+            var vertexs2 = body2.parts[p2].vertexs;
+            var nrmDirs2 = [];
+            for(var v2 = 0; v2 < vertexs2.length/simple2; v2++){
+                nrmDirs2.push(getNrmUV(vertexs2.getPoint(v2),vertexs2.getPoint((v2+1)%vertexs2.length)));
+            }
+            
+            for(var n1 = 0; n1<nrmDirs1.length; n1++){
+                bounds12[n1]=getBounds(vertexs2,nrmDirs1[n1]);
+            }
+            
+            
+            for(var n2 = 0; n2<nrmDirs2.length; n2++){
+                bounds21[n2]=getBounds(vertexs1,nrmDirs2[n2]);
+                bounds22[n2]=getBounds(vertexs2,nrmDirs2[n2]);
+            }
+            
+            
+            
+            
+            collision = true;
+            var pener = 0;
+            var minPen = Infinity;
+            var minPenN = 0;
+            
+            
+            for(var b = 0; b<nrmDirs1.length; b++){
+                if(bounds11[b][0]>bounds12[b][1] || bounds11[b][1]<bounds12[b][0]){
+                    collision = false;
+                    break;
+                }
+                else{
+                    var pen = min(bounds11[b][1]-bounds12[b][0],bounds12[b][1]-bounds11[b][0]);
+                    if(minPen>pen){
+                     pener = 2;
+                     minPen =  pen;
+                     var minPenN = nrmDirs1[b];
+                    }
+                }
+            }
+            
+            if(!collision){
+                continue;
+            }
+
+            
+            collision = true;
+            for(var b = 0; b<nrmDirs2.length; b++){
+                if(bounds21[b][0]>bounds22[b][1] || bounds21[b][1]<bounds22[b][0]){
+                    collision = false;
+                    
+                    
+                    break;
+                }
+                else{
+                    var pen = min(bounds21[b][1]-bounds22[b][0],bounds22[b][1]-bounds21[b][0]);
+                    if(minPen>pen){
+                     pener = 1;
+                     minPen =  pen;
+                     var minPenN = nrmDirs2[b];
+                    }
+                }
+            }
+            
+            if(collision){
+                if(pener === 1){
+                    contacts.push([id1,p1,id2,p2,minPenN]); //p1 penetrated p2
+                }
+                else{
+                    contacts.push([id2,p2,id1,p1,minPenN]); //p1 penetrated p2
+                }
+            }
+            
+        }
+    }
+    
+    this.collideActvAct(contacts);
+    
     
 };
 
@@ -483,7 +661,7 @@ game.prototype.checkCollisions = function(){
     for(var i = 0; i<this.actors.length-1;i++){
         for(var j = i+1; j<this.actors.length;j++){
             if(mag(this.actors[j].pos.x-this.actors[i].pos.x,this.actors[j].pos.y-this.actors[i].pos.y)<this.actors[j].maxLen+this.actors[i].maxLen){
-                //this.checkActvAct(i,j);
+                this.checkActvAct(i,j);
             }
         }
     }
@@ -548,12 +726,12 @@ body.prototype.createAnt = function(x,y){
 
 game.prototype.initGame = function(){
 
-    var ant = new body(300,300);
-    ant.createAnt(300,300);
+    var ant = new body(100,300);
+    ant.createAnt(100,300);
     
     
-    var ant2 = new body(100,100);
-    ant2.createAnt(100,100);
+    var ant2 = new body(120,100);
+    ant2.createAnt(120,100);
     
     this.actors[0] = ant;
     this.actors[1] = ant2;
