@@ -1,6 +1,8 @@
 frameRate(60);//60 frames per second
 angleMode = "radians";
 
+var drawme = [];
+
 var keys = [];
 
 keyPressed = function() {
@@ -342,7 +344,6 @@ body.prototype.getVertexVelo = function(contact){
     
     var startPoint = rotateVector(endPoint, -this.angVelo);
     
-    //println(this.angVelo);
     
     startPoint.x-=this.velo.x;
     startPoint.y-=this.velo.y;
@@ -350,28 +351,6 @@ body.prototype.getVertexVelo = function(contact){
     
     return new PVector(endPoint.x-startPoint.x,endPoint.y-startPoint.y);
 };
-
-game.prototype.collideActvAct = function(contacts){
-    for(var i = 0; i<contacts.length; i++){
-        var id1 = contacts[i][0];
-        var p1 = contacts[i][1];
-        var id2 = contacts[i][2];
-        var p2 = contacts[i][3];
-
-        
-        this.actors[id1].parts[p1].color[0] = 245;
-        this.actors[id1].parts[p1].color[1] = 233;
-        this.actors[id1].parts[p1].color[2] = 66;
-  
-        this.actors[id2].parts[p2].color[0] = 245;
-        this.actors[id2].parts[p2].color[0] = 164;
-        this.actors[id2].parts[p2].color[0] = 66;
-        
-    
-        
-    }
-};
-
 
 var checkUnbounded = function(vertexs, nrmDir, min, max){
         for(var v = 0; v < vertexs.length; v++){
@@ -388,19 +367,110 @@ var checkUnbounded = function(vertexs, nrmDir, min, max){
 var getBounds = function(vertexs, nrmDir){
     var min = Infinity;
     var max = -Infinity;
+    var minI = 0;
+    var maxI = 0;
     for(var v = 0; v < vertexs.length; v++){
         var bound = getDot(nrmDir,vertexs.getPoint(v));
         if(bound<min){
             min = bound;
+            minI = v;
         }
         if(bound>max){
             max = bound;
+            maxI = v;
         }
     }
     
-    return [min,max];
+    return [[min,max],[minI,maxI]];
     
 };
+
+
+var checkBounded = function(p,vertexs){
+    var simple;
+    if(vertexs.length%2 === 0){
+        simple = 2;
+    }
+    else{
+        simple = 1;
+    }
+    
+    var v2;
+    var dir;
+    var checkPoint;
+    var checkEnd1;
+    var checkEnd2;
+    
+    for(var v = 0; v < vertexs.length/simple; v++){
+        v2 = (v+1)%vertexs.length;
+        dir = getUV(vertexs.getPoint(v),vertexs.getPoint(v2));
+        checkPoint = getDot(p,dir);
+        checkEnd1 = getDot(vertexs.getPoint(v),dir);
+        checkEnd2 = getDot(vertexs.getPoint(v2),dir);
+        if(checkPoint<=min(checkEnd1,checkEnd2) || checkPoint>=max(checkEnd1,checkEnd2)){
+            return false;
+        }
+    }
+    
+    return true;
+};
+
+
+var checkIntersect = function(p11,p12,p21,p22){
+    var nrmDir1 = getNrmUV(p11,p12);
+    var nrmDir2 = getNrmUV(p21,p22);
+    
+    var checkPoint = getDot(p11,nrmDir1);
+    var checkEnd1 = getDot(p21,nrmDir1);
+    var checkEnd2 = getDot(p22,nrmDir1);
+    
+    if(checkPoint<=min(checkEnd1,checkEnd2) || checkPoint>=max(checkEnd1,checkEnd2)){
+        return false;
+    }
+    
+    checkPoint = getDot(p21,nrmDir2);
+    checkEnd1 = getDot(p11,nrmDir2);
+    checkEnd2 = getDot(p12,nrmDir2);
+    
+    if(checkPoint<=min(checkEnd1,checkEnd2) || checkPoint >=max(checkEnd1,checkEnd2)){
+        return false;
+    }
+    
+    return true;
+};
+
+game.prototype.collideActvAct = function(contacts){
+    drawme = [];
+    for(var i = 0; i<contacts.length; i++){
+        
+        var id1 = contacts[i][0];
+        var p1 = contacts[i][1];
+        var contact = contacts[i][2];
+        var id2 = contacts[i][3];
+        var p2 = contacts[i][4];
+        var nrmDir = contacts[i][5];
+        this.actors[id1].parts[p1].color[0] = 245;
+        this.actors[id1].parts[p1].color[1] = 233;
+        this.actors[id1].parts[p1].color[2] = 66;
+  
+        this.actors[id2].parts[p2].color[0] = 245;
+        this.actors[id2].parts[p2].color[1] = 164;
+        this.actors[id2].parts[p2].color[2] = 66;
+        
+        
+        drawme.push(contact);
+        point(contact.x,contact.y);
+        
+        
+        
+        
+    
+        
+    }
+};
+
+
+
 
 
 
@@ -414,22 +484,27 @@ game.prototype.checkActvAct = function(id1, id2){
     var body1 = this.actors[id1];
     var body2 = this.actors[id2];
     var contacts = [];
-    var collision = true;
+    
     var simple1 = 1;
     var simple2 = 1;
     
     var nrmDirs1 = [];//might not be nessesary depending on algorithm
     var bounds11 = [];
     var bounds12 = [];
+    var boundsI11 = [];
+    var boundsI12 = [];
     
     var nrmDirs2 = [];
     var bounds21 = [];
     var bounds22 = [];
+    var boundsI21 = [];
+    var boundsI22 = [];
     
     
     
     for(var p1 = 0; p1 < body1.parts.length; p1++){
-        if(body1.parts[p1].parallelS){
+        var parallelS1 = body1.parts[p1].parallelS;
+        if(parallelS1){
             simple1 = 2;
         }
         else{
@@ -445,13 +520,16 @@ game.prototype.checkActvAct = function(id1, id2){
         
         
         for(var n1 = 0; n1<nrmDirs1.length; n1++){
-            bounds11[n1]=getBounds(vertexs1,nrmDirs1[n1]);
+            var holder = getBounds(vertexs1,nrmDirs1[n1]);
+            bounds11[n1]=holder[0];
+            boundsI11[n1]=holder[1];
         }
         
         
         
         for(var p2 = 0; p2 < body2.parts.length; p2++){
-            if(body2.parts[p2].parallelS){
+            var parallelS2 = body2.parts[p2].parallelS;
+            if(parallelS2){
                 simple2 = 2;
             }
             else{
@@ -464,22 +542,31 @@ game.prototype.checkActvAct = function(id1, id2){
             }
             
             for(var n1 = 0; n1<nrmDirs1.length; n1++){
-                bounds12[n1]=getBounds(vertexs2,nrmDirs1[n1]);
+                var holder = getBounds(vertexs2,nrmDirs1[n1]);
+                bounds12[n1]=holder[0];
+                boundsI12[n1]=holder[1];
             }
             
             
             for(var n2 = 0; n2<nrmDirs2.length; n2++){
-                bounds21[n2]=getBounds(vertexs1,nrmDirs2[n2]);
-                bounds22[n2]=getBounds(vertexs2,nrmDirs2[n2]);
+                
+                var holder = getBounds(vertexs1,nrmDirs2[n2]);
+                bounds21[n2] = holder[0];
+                boundsI21[n2] = holder[1];
+                
+                var holder = getBounds(vertexs2,nrmDirs2[n2]);
+                bounds22[n2] = holder[0];
+                boundsI22[n2] = holder[1];
             }
             
             
             
             
-            collision = true;
+            var collision = true;
             var pener = 0;
+            var penI;
             var minPen = Infinity;
-            var minPenN = 0;
+            var edgeGuess = 0;
             
             
             for(var b = 0; b<nrmDirs1.length; b++){
@@ -488,13 +575,36 @@ game.prototype.checkActvAct = function(id1, id2){
                     break;
                 }
                 else{
-                    var pen = min(bounds11[b][1]-bounds12[b][0],bounds12[b][1]-bounds11[b][0]);
-                    if(minPen>pen){
-                     pener = 2;
-                     minPen =  pen;
-                     var minPenN = nrmDirs1[b];
+                    //store min or max point
+                    //store adjusted normal
+                    //get index of cause of normal as starting point (if need to adjust, get opposite side)
+                    //store side corresponding to adjusted normal to speed up search
+
+                    if(minPen>bounds11[b][1]-bounds12[b][0]){
+                        //side correctly chosen
+                        //store min of 2
+                        
+                        pener = 2;
+                        penI = boundsI12[b][0];
+                        minPen = bounds11[b][1]-bounds12[b][0];
+                        edgeGuess = b;
+                    }
+                    
+                    if(minPen>bounds12[b][1]-bounds11[b][0]){
+                        //get opposite side
+                        //store max of 2
+                        pener = 2;
+                        penI = boundsI12[b][1];
+                        minPen = bounds12[b][1]-bounds11[b][0];
+                        edgeGuess = b;
+                        if(parallelS1){//parallel
+                            edgeGuess+=vertexs1.length/2;
+                        }
+                        
+                        
                     }
                 }
+                    
             }
             
             if(!collision){
@@ -502,7 +612,6 @@ game.prototype.checkActvAct = function(id1, id2){
             }
 
             
-            collision = true;
             for(var b = 0; b<nrmDirs2.length; b++){
                 if(bounds21[b][0]>bounds22[b][1] || bounds21[b][1]<bounds22[b][0]){
                     collision = false;
@@ -511,21 +620,102 @@ game.prototype.checkActvAct = function(id1, id2){
                     break;
                 }
                 else{
-                    var pen = min(bounds21[b][1]-bounds22[b][0],bounds22[b][1]-bounds21[b][0]);
-                    if(minPen>pen){
-                     pener = 1;
-                     minPen =  pen;
-                     var minPenN = nrmDirs2[b];
+                    if(minPen>bounds22[b][1]-bounds21[b][0]){
+                        //side correctly chosen
+                        //store min of 1
+                        pener = 1;
+                        penI = boundsI21[b][0];
+                        minPen = bounds22[b][1]-bounds21[b][0];
+                        edgeGuess = b;
                     }
+                    
+                    if(minPen>bounds21[b][1]-bounds22[b][0]){
+                        //get opposite side
+                        //store max of 1
+                        pener = 1;
+                        penI = boundsI21[b][1];
+                        minPen = bounds21[b][1]-bounds22[b][0];
+                        edgeGuess = b;
+                        if(parallelS2){//parallel
+                            edgeGuess+=vertexs2.length/2;
+                        }
+                        
+                        
+                    }
+                    
                 }
             }
             
             if(collision){
+                
+                var minPenN;
                 if(pener === 1){
-                    contacts.push([id1,p1,id2,p2,minPenN]); //p1 penetrated p2
+                    //get past and present of chosen point
+                    //check if past not inside (dot with normals and check if inside bounds)
+                    //if passed, check each side for intersection
+                    //go +-1 from the estimated side until intersection found
+                    //store point and normal(only if unique)
+                    //done
+                    
+                    var penPoint = vertexs1.getPoint(penI);
+                    var penPast = vertexs1.getPast(penI);
+                    
+                    if(!checkBounded(penPast,vertexs2)){
+                        var v2 = 0;
+                        var zz = 1;//zigzagger
+                        var index = 0;
+                        for(var i = 0; i < vertexs2.length; i++){
+                            v2+=i*zz;
+                            zz*=-1;
+                            var i1 = (vertexs2.length+v2+edgeGuess)%vertexs2.length;
+                            var i2 = (vertexs2.length+v2+edgeGuess+1)%vertexs2.length;
+                            if(checkIntersect(penPoint,penPast,vertexs2.getPoint(i1),vertexs2.getPoint(i2))){
+                                var minPenN=getNrmUV(vertexs2.getPoint(i1),vertexs2.getPoint(i2));                          break;
+                            }
+                        }
+                    
+                    
+                    
+                    
+                    
+                        
+                        contacts.push([id1,p1,penPoint,id2,p2,minPenN]); //p1 penetrated p2
+                    }
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
                 }
                 else{
-                    contacts.push([id2,p2,id1,p1,minPenN]); //p1 penetrated p2
+                    
+                    var penPoint = vertexs2.getPoint(penI);
+                    var penPast = vertexs2.getPast(penI);
+                    if(!checkBounded(penPast,vertexs1)){
+                        
+                        var v1 = 0;
+                        var zz = 1;//zigzagger
+                        var index = 0;
+                        
+                        for(var i = 0; i < vertexs1.length; i++){
+                            v1+=i*zz;
+                            zz*=-1;
+                            
+                            var i1 = (vertexs1.length+v1+edgeGuess)%vertexs1.length;
+                            var i2 = (vertexs1.length+v1+edgeGuess+1)%vertexs1.length;
+                            
+                            
+                            if(checkIntersect(penPoint,penPast,vertexs1.getPoint(i1),vertexs1.getPoint(i2))){
+                                
+                                var minPenN=getNrmUV(vertexs1.getPoint(i1),vertexs1.getPoint(i2));                          break;
+                            }
+                        }
+                        contacts.push([id2,p2,penPoint,id1,p1,minPenN]); //p1 penetrated p2
+                    }
                 }
             }
             
@@ -571,7 +761,6 @@ game.prototype.collideActvFloor = function(id,contacts){
         veloChange.x+=(impulse.x/this.actors[id].mass)/contacts.length;
         veloChange.y+=(impulse.y/this.actors[id].mass)/contacts.length;
         
-        //println(this.actors[id].velo.y);
         
         
         angChange+=(getCross(relContact,impulse)/this.actors[id].inertia)/contacts.length;
@@ -770,8 +959,13 @@ var draw = function() {
     //translate(250-game.actors[0].pos.x,250-game.actors[0].pos.y);
     
     game.draw();
-    point(game.actors[0].pos.x,game.actors[0].pos.y);
     
+    
+    point(game.actors[0].pos.x,game.actors[0].pos.y);
+    for(var d = 0; d<drawme.length; d++){
+        strokeWeight(3);
+        point(drawme[d].x,drawme[d].y);
+    }
     }
     
 };
