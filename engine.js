@@ -991,7 +991,7 @@ game.prototype.collideActvFloor2 = function(id,contacts){
         
         var relContact = new PVector(contact.x-this.actors[id].pos.x,contact.y-this.actors[id].pos.y);
         
-        impulse.x = -(1+part.bounce)*(velocity.x)/(1/this.actors[id].mass+(relContact.x*relContact.x)/this.actors[id].inertia)*0.99;
+        impulse.x = -(1+part.bounce)*(velocity.x)/(1/this.actors[id].mass+(relContact.x*relContact.x)/this.actors[id].inertia)*0.75;
         impulse.y = -(1+part.bounce)*(velocity.y)/(1/this.actors[id].mass+(relContact.x*relContact.x)/this.actors[id].inertia);
         
         
@@ -1005,8 +1005,16 @@ game.prototype.collideActvFloor2 = function(id,contacts){
         
         angChange+=(getCross(relContact,impulse)/this.actors[id].inertia);
         
+        this.actors[id].velo.x+=veloChange.x;
+        this.actors[id].velo.y+=veloChange.y;
+        this.actors[id].angVelo+=angChange;
+        
+        veloChange.x=0;
+        veloChange.y=0;
         
         
+        
+        angChange=0;
         
         if(contact.y>maxPenetrate){
            maxPenetrate=contact.y;
@@ -1014,9 +1022,7 @@ game.prototype.collideActvFloor2 = function(id,contacts){
         
     }
 
-        this.actors[id].velo.x+=veloChange.x;
-        this.actors[id].velo.y+=veloChange.y;
-        this.actors[id].angVelo+=angChange;
+        
 
 
     //this.actors[id].penetrate.y=0;
