@@ -1,14 +1,21 @@
 frameRate(60);//60 frames per second
 angleMode = "radians";
 
-var drawme = [];
+var drawPoints = [];
+var drawLines = [];
+var debugTest;
+var global_Collision = true;
 
 var keys = [];
-
+var oneFrame = false;
 keyPressed = function() {
     if(keyCode === 32)//spacebar
     {
         keys[0] = true;
+    }
+    if(keyCode === 190)//spacebar
+    {
+        keys[1] = true;
     }
     
 };
@@ -20,7 +27,15 @@ keyReleased = function() {
         keys[0] = false;
         
     }
+    if(keyCode === 190)//spacebar
+    {
+        keys[0] = false;
+        oneFrame = true;
+    }
+    
 };
+
+
 
 //stores past and present values, present values meant to be updated all at once
 var pointStorage = function(){
@@ -77,8 +92,8 @@ pointStorage.prototype.setPointY = function(index,value){
 };
 
 pointStorage.prototype.getPoint = function(index){
-    
     return this.storage[this.present][index];
+    
     
 };
 
@@ -114,9 +129,10 @@ var part = function(e1, e2){
     this.mass = 1;
     this.sF = 0.9;//static friction
     this.kF = 0.1;//kinetic friction
-    this.bounce = 0.10;
+    this.bounce = 0.1;
     this.width = 10;
     this.parallelS = true;//parallel sides
+    
 };
 
 var joint = function(x, y){
@@ -148,7 +164,7 @@ var body= function(x,y){
         
     this.velo = new PVector(0, 0);
     
-    this.accel = new PVector(0, 10/60);
+    this.accel = new PVector(0, 10/60);//10/60
     
     this.ang = 0;
         
@@ -159,6 +175,8 @@ var body= function(x,y){
     this.inertia = 0;
     
     this.mass = 0;
+    
+    this.penetrate = new PVector(0,0);
 
 };
 
@@ -431,7 +449,7 @@ var checkIntersect = function(p11,p12,p21,p22){
 };
 
 game.prototype.collideActvAct = function(contacts){
-    drawme = [];
+    
     
     
     var id1;
@@ -460,6 +478,7 @@ game.prototype.collideActvAct = function(contacts){
         var id2 = contacts[i][3];
         var p2 = contacts[i][4];
         var nrmDir = contacts[i][5];
+        var minPen = contacts[i][6];
         this.actors[id1].parts[p1].color[0] = 245;
         this.actors[id1].parts[p1].color[1] = 233;
         this.actors[id1].parts[p1].color[2] = 66;
@@ -467,9 +486,12 @@ game.prototype.collideActvAct = function(contacts){
         this.actors[id2].parts[p2].color[1] = 164;
         this.actors[id2].parts[p2].color[2] = 66;
         
-        drawme.push(contact);
+        drawPoints.push(contact);
         
         
+        if(false){
+            continue;
+        }
         var part = this.actors[id1].parts[p1];
         
         
@@ -477,8 +499,14 @@ game.prototype.collideActvAct = function(contacts){
         var velocity1 = this.actors[id1].getVertexVelo(contact);
         var velocity2 = this.actors[id2].getVertexVelo(contact);
         var velocity = new PVector(velocity1.x-velocity2.x,velocity1.y-velocity2.y);
-        //var velocity = new PVector(contact.x-part.vertexs.getPast(contacts[i][1]).x,contact.y-part.vertexs.getPast(contacts[i][1]).y);
-        //velocity.y+=10/60;
+        //println(velocity);
+        
+        if(getDot(velocity,nrmDir)>0 || mag(velocity.x,velocity.y)<0.01){
+            continue;
+        }else{
+            global_Collision = true;   
+        }
+
         
         
         var impulse = new PVector(0,0);
@@ -488,30 +516,40 @@ game.prototype.collideActvAct = function(contacts){
         var relContact2 = new PVector(contact.x-this.actors[id2].pos.x,contact.y-this.actors[id2].pos.y);
         
         impulse.x = -(1+part.bounce)*(velocity.x)/(1/this.actors[id1].mass+1/this.actors[id2].mass+(getCross(relContact1,nrmDir)*getCross(relContact1,nrmDir))/this.actors[id1].inertia+(getCross(relContact2,nrmDir)*getCross(relContact2,nrmDir))/this.actors[id2].inertia);
-        impulse.x = -(1+part.bounce)*(velocity.y)/(1/this.actors[id1].mass+1/this.actors[id2].mass+(getCross(relContact1,nrmDir)*getCross(relContact1,nrmDir))/this.actors[id1].inertia+(getCross(relContact2,nrmDir)*getCross(relContact2,nrmDir))/this.actors[id2].inertia);
+        impulse.y = -(1+part.bounce)*(velocity.y)/(1/this.actors[id1].mass+1/this.actors[id2].mass+(getCross(relContact1,nrmDir)*getCross(relContact1,nrmDir))/this.actors[id1].inertia+(getCross(relContact2,nrmDir)*getCross(relContact2,nrmDir))/this.actors[id2].inertia);
+        
+        drawLines.push([contact,new PVector(contact.x+impulse.x*5,contact.y+impulse.y*5)]);
         
 
         
         
-        veloChange1.x+=(impulse.x/this.actors[id1].mass)/contacts.length;
-        veloChange1.y+=(impulse.y/this.actors[id1].mass)/contacts.length;
+        veloChange1.x+=(impulse.x/this.actors[id1].mass);
+        veloChange1.y+=(impulse.y/this.actors[id1].mass);
         
-        angChange1+=(getCross(relContact1,impulse)/this.actors[id1].inertia)/contacts.length;
-        veloChange2.x-=(impulse.x/this.actors[id2].mass)/contacts.length;
-        veloChange2.y-=(impulse.y/this.actors[id2].mass)/contacts.length;
+        angChange1+=(getCross(relContact1,impulse)/this.actors[id1].inertia);
+        veloChange2.x-=(impulse.x/this.actors[id2].mass);
+        veloChange2.y-=(impulse.y/this.actors[id2].mass);
         
-        angChange2-=(getCross(relContact2,impulse)/this.actors[id2].inertia)/contacts.length;
-        
-        //if(contact.y>maxPenetrate){
-        //   maxPenetrate=contact.y;
-        //}
+        angChange2-=(getCross(relContact2,impulse)/this.actors[id2].inertia);
+        //println(veloChange1);
         this.actors[id1].velo.x+=veloChange1.x;
         this.actors[id1].velo.y+=veloChange1.y;
         this.actors[id1].angVelo+=angChange1;
+        this.actors[id1].penetrate.x=(minPen*nrmDir.x)*0.3;
+        this.actors[id1].penetrate.y=(minPen*nrmDir.y)*0.3;
+        
+        
+        
         
         this.actors[id2].velo.x+=veloChange2.x;
         this.actors[id2].velo.y+=veloChange2.y;
         this.actors[id2].angVelo+=angChange2;
+        this.actors[id2].penetrate.x= -(minPen*nrmDir.x)*0.3;
+        this.actors[id2].penetrate.y= -(minPen*nrmDir.y)*0.3;
+        //if(contact.y>maxPenetrate){
+        //   maxPenetrate=contact.y;
+        //}
+        
     }
     
     
@@ -520,6 +558,7 @@ game.prototype.collideActvAct = function(contacts){
         //this.actors[id].pos.y+=(375-maxPenetrate)*0.3;
     //}
         
+    
         
         
         
@@ -760,7 +799,9 @@ game.prototype.checkActvAct = function(id1, id2){
                     
                     
                 }
-                    if(!checkBounded(pointPast,vertPast)){
+                    if(true){
+                    //if(!checkBounded(pointPast,vertPast)){
+                        debugTest = true;
                         var v = 0;
                         var zz = 1;//zigzagger
                         for(var i = 0; i < vertNow.length; i++){
@@ -768,16 +809,20 @@ game.prototype.checkActvAct = function(id1, id2){
                             zz*=-1;
                             var i1 = (vertNow.length+v+edgeGuess)%vertNow.length;
                             var i2 = (vertNow.length+v+edgeGuess+1)%vertNow.length;
-                            
-                            if(checkBounded(pointNow,[vertNow[i1], vertPast[i1], vertPast[i2], vertNow[i2]]) || checkIntersect(pointNow,pointPast,vertNow[i1], vertNow[i2])){
+                            if(true){
+                            //if(checkBounded(pointNow,[vertNow[i1], vertPast[i1], vertPast[i2], vertNow[i2]]) || checkIntersect(pointNow,pointPast,vertNow[i1], vertNow[i2])){
                             //if(checkIntersect(pointNow,pointPast,vertNow[i1], vertNow[i2])){
                                 
                                 var con_edge=getNrmUV(vertNow[i1],vertNow[i2]);
-                                
+                                debugTest = false;
                                 break;
+                                
                             }
                         }
-                        contacts.push([con_id1,con_part1,pointNow,con_id2,con_part2,con_edge]);
+                        if(debugTest){
+                            println("error");   
+                        }
+                        contacts.push([con_id1,con_part1,pointNow,con_id2,con_part2,con_edge, minPen]);
                     }
                
                 
@@ -802,22 +847,43 @@ game.prototype.collideActvFloor = function(id,contacts){
     
     var maxPenetrate = 0;
     
+    var bounce = 0.1;
+    
+    
+    
     for(var i = 0; i<contacts.length; i++){
-        var part = this.actors[id].parts[contacts[i][0]];
-        var contact = part.vertexs.getPoint(contacts[i][1]);
+        var contact = contacts[i];
+        
+        if(contact.y>maxPenetrate){
+           maxPenetrate=contact.y;
+        }
+        
+        
+        drawPoints.push(contact);
         
         
         var velocity = this.actors[id].getVertexVelo(contact);
+        
         //var velocity = new PVector(contact.x-part.vertexs.getPast(contacts[i][1]).x,contact.y-part.vertexs.getPast(contacts[i][1]).y);
         //velocity.y+=10/60;
+        
+        if(velocity.y<0 || mag(velocity.x,velocity.y)<0.01){
+            if( mag(velocity.x,velocity.y)<0.01){
+            this.actors[id].velo.x = 0;
+            this.actors[id].velo.y = 0;
+            this.actors[id].angVelo = 0;
+            }
+            continue;   
+        }
+        global_Collision = true;
         
         
         var impulse = new PVector(0,0);
         
         var relContact = new PVector(contact.x-this.actors[id].pos.x,contact.y-this.actors[id].pos.y);
-        
-        impulse.x = -(1+part.bounce)*(velocity.x)/(1/this.actors[id].mass+(relContact.x*relContact.x)/this.actors[id].inertia);
-        impulse.y = -(1+part.bounce)*(velocity.y)/(1/this.actors[id].mass+(relContact.x*relContact.x)/this.actors[id].inertia);
+         
+        impulse.x = -(1+bounce)*(velocity.x)/(1/this.actors[id].mass+(relContact.x*relContact.x)/this.actors[id].inertia);
+        impulse.y = -(1+bounce)*(velocity.y)/(1/this.actors[id].mass+(relContact.x*relContact.x)/this.actors[id].inertia);
         
 
         
@@ -825,23 +891,22 @@ game.prototype.collideActvFloor = function(id,contacts){
         veloChange.x+=(impulse.x/this.actors[id].mass)/contacts.length;
         veloChange.y+=(impulse.y/this.actors[id].mass)/contacts.length;
         
-        
+        drawLines.push([contact,new PVector(contact.x+veloChange.x*10,contact.y+veloChange.y*10)]);
         
         angChange+=(getCross(relContact,impulse)/this.actors[id].inertia)/contacts.length;
         
-        if(contact.y>maxPenetrate){
-           maxPenetrate=contact.y;
-        }
+        
         
     }
     
     this.actors[id].velo.x+=veloChange.x;
     this.actors[id].velo.y+=veloChange.y;
     this.actors[id].angVelo+=angChange;
-    if(maxPenetrate+this.actors[id].velo.y>375){
-        this.actors[id].pos.y+=(375-maxPenetrate+this.actors[id].velo.y);
-        //this.actors[id].pos.y+=(375-maxPenetrate)*0.3;
-    }
+    this.actors[id].penetrate.y=0;
+    //if(maxPenetrate+this.actors[id].velo.y>375){
+        //this.actors[id].pos.y+=(375-maxPenetrate+this.actors[id].velo.y);
+        this.actors[id].penetrate.y=(375-maxPenetrate)*0.3;
+    //}
     
 };
 
@@ -856,6 +921,125 @@ game.prototype.checkActvFloor = function(id){
     var lowLim;
     var highLim;
     var halfPoint;
+    
+    var maxP = new PVector(-Infinity, -Infinity);
+    var minP = new PVector(Infinity, Infinity);
+    var p;
+    var collision = false;
+    for(var i = 0; i < this.actors[id].parts.length; i++){
+        lowLim = 0;
+        highLim = this.actors[id].parts[i].vertexs.length;
+        for(var j = lowLim; j < highLim; j++){
+            p = this.actors[id].parts[i].vertexs.getPoint(j);
+            //if(this.actors[id].getVertexVelo(p).y>0){
+            if(p.y>this.floor){
+                collision = true;
+                maxP.x = max(maxP.x,p.x);
+                maxP.y = max(maxP.y,p.y);
+                
+                minP.x = min(minP.x,p.x);
+                minP.y = min(minP.y,p.y);
+                
+                    
+                
+            }
+            //}
+        }
+    }
+    if(collision){
+        var contact = new PVector(0, 0);
+        contact.x = (maxP.x+minP.x)/2;
+        contact.y = (maxP.y+minP.y)/2;
+        //eventual average bounce and friction
+        //will need to seperate moving joints as well
+        contacts.push(contact);
+        this.collideActvFloor(id, contacts);
+    }
+                
+};
+
+
+game.prototype.collideActvFloor2 = function(id,contacts){
+    //first get velo of each
+    
+    var veloChange = new PVector(0,0);
+    var angChange = 0;
+    var posChange = 0;
+    
+    var partialSum = 0;
+    
+    var maxPenetrate = 0;
+    
+    for(var i = 0; i<contacts.length; i++){
+        var part = this.actors[id].parts[contacts[i][0]];
+        var contact = part.vertexs.getPoint(contacts[i][1]);
+        if(contact.y>maxPenetrate){
+           maxPenetrate=contact.y;
+        }
+        
+        drawPoints.push(contact);
+        
+        var velocity = this.actors[id].getVertexVelo(contact);
+        //var velocity = new PVector(contact.x-part.vertexs.getPast(contacts[i][1]).x,contact.y-part.vertexs.getPast(contacts[i][1]).y);
+        //velocity.y+=10/60;
+        if(velocity.y<0 || mag(velocity.x,velocity.y)<0.01){
+            continue;   
+        }
+        global_Collision = true;
+        
+        var impulse = new PVector(0,0);
+        
+        var relContact = new PVector(contact.x-this.actors[id].pos.x,contact.y-this.actors[id].pos.y);
+        
+        impulse.x = -(1+part.bounce)*(velocity.x)/(1/this.actors[id].mass+(relContact.x*relContact.x)/this.actors[id].inertia)*0.99;
+        impulse.y = -(1+part.bounce)*(velocity.y)/(1/this.actors[id].mass+(relContact.x*relContact.x)/this.actors[id].inertia);
+        
+        
+        
+        
+        
+        veloChange.x+=(impulse.x/this.actors[id].mass);
+        veloChange.y+=(impulse.y/this.actors[id].mass);
+        
+        
+        
+        angChange+=(getCross(relContact,impulse)/this.actors[id].inertia);
+        
+        
+        
+        
+        if(contact.y>maxPenetrate){
+           maxPenetrate=contact.y;
+        }
+        
+    }
+
+        this.actors[id].velo.x+=veloChange.x;
+        this.actors[id].velo.y+=veloChange.y;
+        this.actors[id].angVelo+=angChange;
+
+
+    //this.actors[id].penetrate.y=0;
+    //if(maxPenetrate+this.actors[id].velo.y>375){
+    //    //this.actors[id].pos.y+=(375-maxPenetrate+this.actors[id].velo.y);
+    //    this.actors[id].penetrate.y=(375-maxPenetrate)*0.3;
+    //}
+    
+};
+
+//if point is under floor, has downwards velocity, and of a unique joint, collide
+game.prototype.checkActvFloor2 = function(id){
+    
+    
+    var contacts = [];
+    
+    var blacklist = [];
+    
+    var lowLim;
+    var highLim;
+    var halfPoint;
+    
+    var maxPenetrate = 0;
     
     for(var i = 0; i < this.actors[id].parts.length; i++){
         lowLim = 0;
@@ -872,9 +1056,13 @@ game.prototype.checkActvFloor = function(id){
         }
         for(var j = lowLim; j < highLim; j++){
             if(this.actors[id].parts[i].vertexs.getPoint(j).y>this.floor){
+                if(this.actors[id].parts[i].vertexs.getPoint(j).y>maxPenetrate){
+                   maxPenetrate=this.actors[id].parts[i].vertexs.getPoint(j).y;
+                   this.actors[id].penetrate.y=(375-maxPenetrate)*0.3;
+                }
                 if(this.actors[id].getVertexVelo(this.actors[id].parts[i].vertexs.getPoint(j)).y>0){
                 //if(this.actors[id].parts[i].vertexs.getPoint(j).y-this.actors[id].parts[i].vertexs.getPast(j).y>0){
-
+                
                     contacts.push([i,j]);
                     
                     if(j<halfPoint){
@@ -891,33 +1079,40 @@ game.prototype.checkActvFloor = function(id){
             }
         }
     }
-    this.collideActvFloor(id, contacts);
+    this.collideActvFloor2(id, contacts);
                 
 };
 
 
 
-
 game.prototype.checkCollisions = function(){
     
-    
-    
-    //quick check for floor
-    for(var i = 0; i<this.actors.length ;i++){
-        if(this.floor-this.actors[i].pos.y<this.actors[i].maxLen){
-                this.checkActvFloor(i);
-            }
-    }
-    
-    
-    //quick check between actors
-    for(var i = 0; i<this.actors.length-1;i++){
-        for(var j = i+1; j<this.actors.length;j++){
-            if(mag(this.actors[j].pos.x-this.actors[i].pos.x,this.actors[j].pos.y-this.actors[i].pos.y)<this.actors[j].maxLen+this.actors[i].maxLen){
-                this.checkActvAct(i,j);
+    while(global_Collision){
+        global_Collision = false;
+        //quick check for floor
+        for(var i = 0; i<this.actors.length ;i++){
+            if(this.floor-this.actors[i].pos.y<this.actors[i].maxLen){
+                    this.checkActvFloor2(i);
+                }
+        }
+        
+        
+        //quick check between actors
+        for(var i = 0; i<this.actors.length-1;i++){
+            for(var j = i+1; j<this.actors.length;j++){
+                if(mag(this.actors[j].pos.x-this.actors[i].pos.x,this.actors[j].pos.y-this.actors[i].pos.y)<this.actors[j].maxLen+this.actors[i].maxLen){
+                    this.checkActvAct(i,j);
+                }
             }
         }
+        //global_Collision = false;
     }
+    for(var i = 0; i<this.actors.length ;i++){
+            this.actors[i].pos.x+=this.actors[i].penetrate.x;
+            this.actors[i].pos.y+=this.actors[i].penetrate.y;
+    }
+            
+    global_Collision = true;
 };
 
 body.prototype.getPE = function(floor){
@@ -940,6 +1135,46 @@ body.prototype.act = function(){
   
 };
 
+body.prototype.createAng = function(x,y){
+    var neck = new joint(x,y);
+    var tail = new joint(x-50,y);
+    var tail2 = new joint(x,y+25);
+    
+    this.joints = [neck,tail,tail2];
+    
+    for(var i = 0;i<this.joints.length;i++){
+        this.joints[i].id = i;
+    }
+    
+
+    
+    neck.attached = [tail.id];
+    neck.len = [20];
+    
+    tail.attached = [neck.id, tail2.id];
+    tail.len = [20];
+    
+    tail2.attached = [tail.id];
+    tail.len = [20];
+    
+    
+
+    var p_body = new part(neck.id,tail.id);
+    var p_tail = new part(tail.id,tail2.id);
+    
+    this.parts = [p_body, p_tail];
+    
+    for(var i = 0;i<this.parts.length;i++){
+        this.parts[i].id = i;
+        this.parts[i].initSquare();
+    }
+    this.updateParts();
+    this.updateCenter();
+    
+
+};
+
+
 body.prototype.createAnt = function(x,y){
     var head = new joint(x+50,y);
     var neck = new joint(x,y);
@@ -961,6 +1196,7 @@ body.prototype.createAnt = function(x,y){
     tail.attached = [neck.id, tail2.id];
     tail.len = [20];
     
+    
     var p_head = new part(head.id,neck.id);
     var p_body = new part(neck.id,tail.id);
     var p_tail = new part(tail.id,tail2.id);
@@ -979,15 +1215,15 @@ body.prototype.createAnt = function(x,y){
 
 game.prototype.initGame = function(){
 
-    var ant = new body(100,300);
-    ant.createAnt(100,300);
+    var ant = new body(200,300);
+    ant.createAnt(200,300);
     
     
-    var ant2 = new body(120,100);
-    ant2.createAnt(120,100);
+    var ant2 = new body(220,100);
+    ant2.createAnt(220,100);
     
-    this.actors[0] = ant;
-    this.actors[1] = ant2;
+    this.actors[1] = ant;
+    this.actors[0] = ant2;
 
 };
 
@@ -1013,12 +1249,10 @@ game.prototype.draw = function(){
 
 var game = new game();
 game.initGame();
-var fbf = true;
-var pastK = keys[0];
 var draw = function() {
     pushMatrix();
-    if(keys[0] && (!fbf || keys[0] !== pastK)){
-    var pastK = keys[0];
+    if(keys[0] || oneFrame){
+    oneFrame = false;
     
     background(0, 0, 0);
     game.act();
@@ -1028,10 +1262,22 @@ var draw = function() {
     game.draw();
     
     
-    for(var d = 0; d<drawme.length; d++){
+    
+    
+    for(var d = 0; d<drawLines.length; d++){
         strokeWeight(3);
-        point(drawme[d].x,drawme[d].y);
+        stroke(0, 21, 255);
+        line(drawLines[d][0].x,drawLines[d][0].y,drawLines[d][1].x,drawLines[d][1].y);
     }
+    drawLines = [];
+    
+    for(var d = 0; d<drawPoints.length; d++){
+        strokeWeight(3);
+        stroke(255,0,0);
+        point(drawPoints[d].x,drawPoints[d].y);
+    }
+    drawPoints = [];
+    
     }
     popMatrix();
     
