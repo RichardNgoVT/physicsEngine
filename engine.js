@@ -377,13 +377,39 @@ body.prototype.getEnds = function(id){
     return [this.joints[this.parts[id].ends[0]].pos, this.joints[this.parts[id].ends[1]].pos];
 };
 
+var normalize = function(p) {
+    var len = mag(p.x,p.y);
+    return new PVector(p.x/len,p.y/len);
+};
 
-var getUV = function(p1, p2) {
+var getUV = function() {
+    var p1;
+    var p2;
+    if(arguments.length===2){
+        p1 = arguments[0];
+        p2 = arguments[1];
+    }
+    else{
+        p1 = new PVector(0,0);
+        p2 = arguments[0];
+    }
+    
     var magni = mag(p2.x-p1.x,p2.y-p1.y);
     return new PVector((p2.x-p1.x)/magni,(p2.y-p1.y)/magni);
 };
 
-var getNrmUV = function(p1, p2) {
+var getNrmUV = function() {
+    var p1;
+    var p2;
+    if(arguments.length===2){
+        p1 = arguments[0];
+        p2 = arguments[1];
+    }
+    else{
+        p1 = new PVector(0,0);
+        p2 = arguments[0];
+    }
+    
     var magni = mag(p2.x-p1.x,p2.y-p1.y);
     return new PVector(-(p2.y-p1.y)/magni,(p2.x-p1.x)/magni);
 };
@@ -1022,7 +1048,9 @@ game.prototype.collideActvFloor2 = function(id,contacts){
         var impulse = new PVector(0,0);
         
         var relContact = new PVector(contact.x-this.actors[id].pos.x,contact.y-this.actors[id].pos.y);
-        var relMag = mag(relContact.x,relContact.y);
+        var veloDir = getUV(velocity);
+        //var relMag = mag(relContact.x,relContact.y);
+        var relMag = getCross(relContact,veloDir);
         //var relMag = relContact.x;
         impulse.x = -(1+part.bounce)*(velocity.x)/(1/this.actors[id].mass+(relMag*relMag)/this.actors[id].inertia)*1;
         impulse.y = -(1+part.bounce)*(velocity.y)/(1/this.actors[id].mass+(relMag*relMag)/this.actors[id].inertia);
@@ -1399,7 +1427,7 @@ game.prototype.initGame = function(){
     
     
     var ant2 = new body(220,100);
-    ant2.createAnt2(220,100);
+    ant2.createAnt(220,100);
     
     //this.actors[1] = ant;
     this.actors[0] = ant2;
