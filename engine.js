@@ -597,8 +597,10 @@ game.prototype.collideActvAct = function(contacts){
         
         var velocity1 = this.actors[id1].getVertexVelo(contact);
         var velocity2 = this.actors[id2].getVertexVelo(contact);
+        //println(velocity1);
+        //println(velocity2);
         var velocity = new PVector(velocity1.x-velocity2.x,velocity1.y-velocity2.y);
-        //println(velocity);
+        
         
         if(getDot(velocity,nrmDir)>0 || mag(velocity.x,velocity.y)<0.01){
             continue;
@@ -606,7 +608,9 @@ game.prototype.collideActvAct = function(contacts){
             global_Collision = true;   
         }
 
-        
+         var veloDir = getUV(velocity);
+         
+         
         
         var impulse = new PVector(0,0);
         
@@ -614,9 +618,11 @@ game.prototype.collideActvAct = function(contacts){
         
         var relContact2 = new PVector(contact.x-this.actors[id2].pos.x,contact.y-this.actors[id2].pos.y);
         
-        impulse.x = -(1+part.bounce)*(velocity.x)/(1/this.actors[id1].mass+1/this.actors[id2].mass+(getCross(relContact1,nrmDir)*getCross(relContact1,nrmDir))/this.actors[id1].inertia+(getCross(relContact2,nrmDir)*getCross(relContact2,nrmDir))/this.actors[id2].inertia);
-        impulse.y = -(1+part.bounce)*(velocity.y)/(1/this.actors[id1].mass+1/this.actors[id2].mass+(getCross(relContact1,nrmDir)*getCross(relContact1,nrmDir))/this.actors[id1].inertia+(getCross(relContact2,nrmDir)*getCross(relContact2,nrmDir))/this.actors[id2].inertia);
+        impulse.x = -(1+part.bounce)*(velocity.x)/(1/this.actors[id1].mass+1/this.actors[id2].mass+(getCross(relContact1,veloDir)*getCross(relContact1,veloDir))/this.actors[id1].inertia+(getCross(relContact2,veloDir)*getCross(relContact2,veloDir))/this.actors[id2].inertia);
+        impulse.y = -(1+part.bounce)*(velocity.y)/(1/this.actors[id1].mass+1/this.actors[id2].mass+(getCross(relContact1,veloDir)*getCross(relContact1,veloDir))/this.actors[id1].inertia+(getCross(relContact2,veloDir)*getCross(relContact2,veloDir))/this.actors[id2].inertia);
         
+        //println(1/this.actors[id1].mass+(getCross(relContact1,veloDir)*getCross(relContact1,veloDir))/this.actors[id1].inertia);
+        //println(1/this.actors[id2].mass+(getCross(relContact2,veloDir)*getCross(relContact2,veloDir))/this.actors[id2].inertia);
         drawLines.push([contact,new PVector(contact.x+impulse.x*5,contact.y+impulse.y*5)]);
         
 
@@ -1035,6 +1041,8 @@ game.prototype.collideActvFloor2 = function(id,contacts){
         drawPoints.push(contact);
         
         var velocity = this.actors[id].getVertexVelo(contact);
+        
+        //println(velocity);
         //var velocity = new PVector(contact.x-part.vertexs.getPast(contacts[i][1]).x,contact.y-part.vertexs.getPast(contacts[i][1]).y);
         //velocity.y+=10/60;
         
@@ -1048,12 +1056,22 @@ game.prototype.collideActvFloor2 = function(id,contacts){
         var impulse = new PVector(0,0);
         
         var relContact = new PVector(contact.x-this.actors[id].pos.x,contact.y-this.actors[id].pos.y);
+        
+        
         var veloDir = getUV(velocity);
+        
         //var relMag = mag(relContact.x,relContact.y);
         var relMag = getCross(relContact,veloDir);
+        
+        //println(veloDir);
+        //println(relContact);
+        //println(relMag);
+        
+        
         //var relMag = relContact.x;
         impulse.x = -(1+part.bounce)*(velocity.x)/(1/this.actors[id].mass+(relMag*relMag)/this.actors[id].inertia)*1;
         impulse.y = -(1+part.bounce)*(velocity.y)/(1/this.actors[id].mass+(relMag*relMag)/this.actors[id].inertia);
+        
         
         
         
@@ -1085,9 +1103,10 @@ game.prototype.collideActvFloor2 = function(id,contacts){
         
     }
     if(contacted){
+
     this.actors[id].velo.x+=rangeCrossNrm.x+rangeCrossNrm.y;
-    this.actors[id].velo.y+=-max(maxDotNrm,0.01);
-    //this.actors[id].velo.y=min(this.actors[id].velo.y,0.01);
+    this.actors[id].velo.y+=-max(maxDotNrm,0.00);
+    //this.actors[id].velo.y=min(this.actors[id].velo.y,0.00);
     this.actors[id].angVelo+=rangeRotate.x+rangeRotate.y;
     }
     
@@ -1142,7 +1161,7 @@ game.prototype.checkActvFloor = function(id){
                    this.actors[id].penetrate.y=(this.floor-maxPenetrate)*0.3;
                    //this.actors[id].penetrate.y=(this.floor-maxPenetrate+this.actors[id].velo.y);
                 }
-                if(this.actors[id].getVertexVelo(this.actors[id].parts[i].vertexs.getPoint(j)).y>0){
+                //if(this.actors[id].getVertexVelo(this.actors[id].parts[i].vertexs.getPoint(j)).y>0){
                 //if(this.actors[id].parts[i].vertexs.getPoint(j).y-this.actors[id].parts[i].vertexs.getPast(j).y>0){
                 
                     contacts.push([i,j]);
@@ -1158,7 +1177,7 @@ game.prototype.checkActvFloor = function(id){
                     */
                 }
                 
-            }
+            //}
         }
     }
     this.collideActvFloor2(id, contacts);
@@ -1193,8 +1212,11 @@ game.prototype.checkCollisions = function(){
         resCounter+=1;
     }
     for(var i = 0; i<this.actors.length ;i++){
+        
             this.actors[i].pos.x+=this.actors[i].penetrate.x;
             this.actors[i].pos.y+=this.actors[i].penetrate.y;
+            this.actors[i].penetrate.x = 0;
+            this.actors[i].penetrate.y = 0;
     }
             
     global_Collision = true;
@@ -1422,14 +1444,14 @@ body.prototype.createAnt2 = function(x,y){
 
 game.prototype.initGame = function(){
 
-    var ant = new body(100,300);
-    ant.createAnt(100,300);
+    var ant = new body(200,300);
+    ant.createAnt(200,300);
     
     
     var ant2 = new body(220,100);
     ant2.createAnt(220,100);
     
-    //this.actors[1] = ant;
+    this.actors[1] = ant;
     this.actors[0] = ant2;
 
 };
