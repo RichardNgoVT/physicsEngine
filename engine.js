@@ -265,139 +265,6 @@ var body= function(x,y){
 
 };
 
-
-joint.prototype.setCenter = function(x,y,ang){
-    
-    this.cenAng = atan2(this.pos.y-y,this.pos.x-x)-ang;
-    this.cenLen = mag(this.pos.x-x,this.pos.y-y);
-    
-};
-
-
-body.prototype.updateInertia = function(){
-    this.inertia = 0;
-    for(var i = 0; i < this.parts.length;i++){
-        this.parts[i].cenLen = mag(this.parts[i].pos.x-this.pos.x, this.parts[i].pos.y-this.pos.y);
-        this.inertia +=  this.parts[i].mass* this.parts[i].cenLen* this.parts[i].cenLen;
-    }
-};
-
-//whenever limbs lost or rotated
-body.prototype.updateCenter = function(){
-    var xSum = 0;
-    var ySum = 0;
-    var massSum = 0;
-    for(var i = 0; i < this.parts.length;i++){
-        xSum+=this.parts[i].pos.x*this.parts[i].mass;
-        ySum+=this.parts[i].pos.y*this.parts[i].mass;
-        massSum+=this.parts[i].mass;
-    }
-    this.pos.x = xSum/massSum;
-    this.pos.y = ySum/massSum;
-    this.mass = massSum;
-   
-    var oldInertia = this.inertia;
-    this.updateInertia();
-     if(this.inertia>0){
-        this.angVelo*=oldInertia/this.inertia;   
-     }
-    
-    this.maxLen = 0;
-    for(var i = 0; i < this.joints.length;i++){
-        
-        this.joints[i].setCenter(this.pos.x,this.pos.y,this.ang);
-        
-        if(this.joints[i].cenLen>this.maxLen){
-            this.maxLen = this.joints[i].cenLen;
-        }
-    }
-};
-
-
-
-
-body.prototype.getAttached = function(idSource, idAttached){
-    return this.joints[this.joints[idSource].attached[idAttached]];
-};
-
-//optimizable
-
-body.prototype.drawLimbs = function(){
-    noStroke();
-    for(var i = 0; i < this.parts.length; i++){
-        fill(this.parts[i].color[0], this.parts[i].color[1], this.parts[i].color[2]);
-        quad(this.parts[i].vertexs.getPoint(0).x, this.parts[i].vertexs.getPoint(0).y, this.parts[i].vertexs.getPoint(1).x, this.parts[i].vertexs.getPoint(1).y, this.parts[i].vertexs.getPoint(2).x, this.parts[i].vertexs.getPoint(2).y, this.parts[i].vertexs.getPoint(3).x, this.parts[i].vertexs.getPoint(3).y);
-    }
-};
-
-body.prototype.drawBones = function() {
-    strokeWeight(3);
-    for(var i = 0; i < this.joints.length; i++){
-        stroke(this.joints[i].color[0], this.joints[i].color[1], this.joints[i].color[2]);
-        for(var j = 0; j < this.joints[i].attached.length; j++){
-            line(this.joints[i].pos.x, this.joints[i].pos.y, this.getAttached(i,j).pos.x, this.getAttached(i,j).pos.y);
-        }
-    }
-};
-
-body.prototype.drawJoints = function() {
-    strokeWeight(2);
-    for(var i = 0; i < this.joints.length; i++){
-        stroke(255,255,255);
-        point(this.joints[i].pos.x,this.joints[i].pos.y);
-        
-    }
-};
-
-body.prototype.draw = function() {
-    this.drawLimbs();
-    this.drawBones();
-    this.drawJoints();
-};
-
-
-body.prototype.updateVelo = function(){
-    this.velo.x+=this.accel.x;
-    this.velo.y+=this.accel.y;
-};
-
-body.prototype.updatePos = function(){
-    this.pos.x+=this.velo.x;
-    this.pos.y+=this.velo.y;
-};
-
-joint.prototype.setPos = function(x,y){
-    this.pos.x=x;
-    this.pos.y=y;
-};
-
-body.prototype.updateAng = function(){
-    this.ang+=this.angVelo;
-};
-
-//using angle and radius
-body.prototype.rotate = function(){
-    for(var i = 0; i < this.joints.length; i++){
-        this.joints[i].setPos(cos(this.ang+this.joints[i].cenAng)*this.joints[i].cenLen+this.pos.x,sin(this.ang+this.joints[i].cenAng)*this.joints[i].cenLen+this.pos.y);
-    }
-};
-
-
-
-
-
-
-
-
-part.prototype.initSquare = function(){
-    this.vertexs.initStorage(4,2);   
-};
-
-
-body.prototype.getEnds = function(id){
-    return [this.joints[this.parts[id].ends[0]].pos, this.joints[this.parts[id].ends[1]].pos];
-};
-
 var normalize = function(p) {
     var len = mag(p.x,p.y);
     return new PVector(p.x/len,p.y/len);
@@ -444,50 +311,10 @@ var getCross = function(p1, p2) {
     return p1.x*p2.y-p1.y*p2.x;
 };
 
-
-body.prototype.updateParts = function(){
-    var ends;
-    var nrm;
-    
-    for(var i = 0; i < this.parts.length; i++){
-        ends = this.getEnds(i);
-        nrm = getNrmUV(ends[0],ends[1]);
-        this.parts[i].pos.x=(ends[0].x+ends[1].x)/2;
-        this.parts[i].pos.y=(ends[0].y+ends[1].y)/2;
-
-        this.parts[i].vertexs.setPointX(0,ends[0].x-nrm.x*this.parts[i].width/2);
-        this.parts[i].vertexs.setPointY(0,ends[0].y-nrm.y*this.parts[i].width/2);
-        this.parts[i].vertexs.setPointX(1,ends[0].x+nrm.x*this.parts[i].width/2);
-        this.parts[i].vertexs.setPointY(1,ends[0].y+nrm.y*this.parts[i].width/2);
-        this.parts[i].vertexs.setPointX(2,ends[1].x+nrm.x*this.parts[i].width/2);
-        this.parts[i].vertexs.setPointY(2,ends[1].y+nrm.y*this.parts[i].width/2);
-        this.parts[i].vertexs.setPointX(3,ends[1].x-nrm.x*this.parts[i].width/2);
-        this.parts[i].vertexs.setPointY(3,ends[1].y-nrm.y*this.parts[i].width/2);
-        
-    }
-    
-};
-
-
 var rotateVector = function(p, rad) {
     var cs = cos(rad);
     var sn = sin(rad);
     return new PVector(cs*p.x-sn*p.y,sn*p.x+cs*p.y);
-};
-
-//ang velocity of last and present
-//can be shortened by saving last points
-body.prototype.getVertexVelo = function(contact){
-    var endPoint = new PVector(contact.x-this.pos.x,contact.y-this.pos.y);
-    
-    var startPoint = rotateVector(endPoint, -this.angVelo);
-    
-    
-    startPoint.x-=this.velo.x;
-    startPoint.y-=this.velo.y;
-    
-    
-    return new PVector(endPoint.x-startPoint.x,endPoint.y-startPoint.y);
 };
 
 var checkUnbounded = function(vertexs, nrmDir, min, max){
@@ -570,6 +397,215 @@ var checkIntersect = function(p11,p12,p21,p22){
     }
     
     return true;
+};
+
+joint.prototype.setCenter = function(x,y,ang){
+    
+    this.cenAng = atan2(this.pos.y-y,this.pos.x-x)-ang;
+    this.cenLen = mag(this.pos.x-x,this.pos.y-y);
+    
+};
+
+joint.prototype.setPos = function(x,y){
+    this.pos.x=x;
+    this.pos.y=y;
+};
+
+
+
+part.prototype.initSquare = function(){
+    this.vertexs.initStorage(4,2);   
+};
+
+
+body.prototype.updateInertia = function(){
+    this.inertia = 0;
+    for(var i = 0; i < this.parts.length;i++){
+        this.parts[i].cenLen = mag(this.parts[i].pos.x-this.pos.x, this.parts[i].pos.y-this.pos.y);
+        this.inertia +=  this.parts[i].mass* this.parts[i].cenLen* this.parts[i].cenLen;
+    }
+};
+
+//whenever limbs lost or rotated
+body.prototype.updateCenter = function(){
+    var xSum = 0;
+    var ySum = 0;
+    var massSum = 0;
+    for(var i = 0; i < this.parts.length;i++){
+        xSum+=this.parts[i].pos.x*this.parts[i].mass;
+        ySum+=this.parts[i].pos.y*this.parts[i].mass;
+        massSum+=this.parts[i].mass;
+    }
+    this.pos.x = xSum/massSum;
+    this.pos.y = ySum/massSum;
+    this.mass = massSum;
+   
+    var oldInertia = this.inertia;
+    this.updateInertia();
+     if(this.inertia>0){
+        this.angVelo*=oldInertia/this.inertia;   
+     }
+    
+    this.maxLen = 0;
+    for(var i = 0; i < this.joints.length;i++){
+        
+        this.joints[i].setCenter(this.pos.x,this.pos.y,this.ang);
+        
+        if(this.joints[i].cenLen>this.maxLen){
+            this.maxLen = this.joints[i].cenLen;
+        }
+    }
+};
+
+
+body.prototype.getAttached = function(idSource, idAttached){
+    return this.joints[this.joints[idSource].attached[idAttached]];
+};
+
+
+
+
+body.prototype.updateVelo = function(){
+    this.velo.x+=this.accel.x;
+    this.velo.y+=this.accel.y;
+};
+
+body.prototype.updatePos = function(){
+    this.pos.x+=this.velo.x;
+    this.pos.y+=this.velo.y;
+};
+
+
+
+body.prototype.updateAng = function(){
+    this.ang+=this.angVelo;
+};
+
+//using angle and radius
+body.prototype.rotate = function(){
+    for(var i = 0; i < this.joints.length; i++){
+        this.joints[i].setPos(cos(this.ang+this.joints[i].cenAng)*this.joints[i].cenLen+this.pos.x,sin(this.ang+this.joints[i].cenAng)*this.joints[i].cenLen+this.pos.y);
+    }
+};
+
+
+body.prototype.getEnds = function(id){
+    return [this.joints[this.parts[id].ends[0]].pos, this.joints[this.parts[id].ends[1]].pos];
+};
+
+
+body.prototype.updateParts = function(){
+    var ends;
+    var nrm;
+    
+    for(var i = 0; i < this.parts.length; i++){
+        ends = this.getEnds(i);
+        nrm = getNrmUV(ends[0],ends[1]);
+        this.parts[i].pos.x=(ends[0].x+ends[1].x)/2;
+        this.parts[i].pos.y=(ends[0].y+ends[1].y)/2;
+
+        this.parts[i].vertexs.setPointX(0,ends[0].x-nrm.x*this.parts[i].width/2);
+        this.parts[i].vertexs.setPointY(0,ends[0].y-nrm.y*this.parts[i].width/2);
+        this.parts[i].vertexs.setPointX(1,ends[0].x+nrm.x*this.parts[i].width/2);
+        this.parts[i].vertexs.setPointY(1,ends[0].y+nrm.y*this.parts[i].width/2);
+        this.parts[i].vertexs.setPointX(2,ends[1].x+nrm.x*this.parts[i].width/2);
+        this.parts[i].vertexs.setPointY(2,ends[1].y+nrm.y*this.parts[i].width/2);
+        this.parts[i].vertexs.setPointX(3,ends[1].x-nrm.x*this.parts[i].width/2);
+        this.parts[i].vertexs.setPointY(3,ends[1].y-nrm.y*this.parts[i].width/2);
+        
+    }
+    
+};
+
+
+
+//ang velocity of last and present
+//can be shortened by saving last points
+body.prototype.getVertexVelo = function(contact){
+    var endPoint = new PVector(contact.x-this.pos.x,contact.y-this.pos.y);
+    
+    var startPoint = rotateVector(endPoint, -this.angVelo);
+    
+    
+    startPoint.x-=this.velo.x;
+    startPoint.y-=this.velo.y;
+    
+    
+    return new PVector(endPoint.x-startPoint.x,endPoint.y-startPoint.y);
+};
+
+
+body.prototype.bendJoints = function(turnJ, J){
+    var currJoint = this.joints[J];
+    
+    for(var i = 1; i < currJoint.attached.length; i++){
+        this.bendJoints(turnJ,currJoint.attached[i]);
+    }
+    
+    var baseJoint = this.getAttached(turnJ,0);
+    var turn = new PVector(currJoint.pos.x-baseJoint.pos.x, currJoint.pos.y-baseJoint.pos.y);
+    var turned = rotateVector(turn, this.joints[turnJ].angVelo);
+    
+    currJoint.pos.x = baseJoint.pos.x+turned.x;
+    currJoint.pos.y = baseJoint.pos.y+turned.y;
+    
+};
+
+
+body.prototype.checkJointBends = function(){
+    var bend = false;
+    
+    for(var i = 0; i < this.joints.length; i++){
+        
+        if(this.joints[i].angVelo !== 0){
+            this.bendJoints(i,i);
+            bend = true;
+        }
+    }
+    return bend;
+};
+
+body.prototype.controls = function(){
+    var turnVelo = PI/60;
+    if(keys[2]){
+        this.joints[0].angVelo = turnVelo;
+    }
+    else if(keys[3]){
+       this.joints[0].angVelo = -turnVelo; 
+    }
+    else{
+        this.joints[0].angVelo = 0; 
+    }
+    if(keys[4]){
+        this.joints[1].angVelo = turnVelo;
+    }
+    else if(keys[5]){
+        this.joints[1].angVelo = -turnVelo;
+    }
+    else{
+        this.joints[1].angVelo = 0; 
+    }
+    if(keys[6]){
+        this.velo.x = -2;
+    }
+    else if(keys[7]){
+        this.velo.x = 2;
+    }
+    if(keys[8]){
+        this.angVelo = -turnVelo;
+    }
+    else if(keys[9]){
+        this.angVelo = turnVelo;
+    }
+};
+
+
+body.prototype.getPE = function(floor){
+    return 1/2*this.mass*10/60*(floor-this.pos.y);
+};
+
+body.prototype.getKE = function(floor){
+    return 1/2*this.mass*pow(mag(this.velo.x,this.velo.y),2)+1/2*this.inertia*pow(this.angVelo,2);
 };
 
 game.prototype.collide = function(id1, id2, contacts){
@@ -922,7 +958,7 @@ game.prototype.checkActvAct = function(id1, id2){
                     edgeVertexs = vertexs1;
                 }
                 con_nrmDir.x*=-1;
-                con_nrmDir.y*=-1;
+                con_nrmDir.y*=-1;//should not be the case...
                 xPenRange[0] = min(xPenRange[0], con_nrmDir.x*minPen);
                 xPenRange[1] = max(xPenRange[1], con_nrmDir.x*minPen);
                 
@@ -1154,80 +1190,6 @@ game.prototype.checkCollisions = function(){
             
 };
 
-body.prototype.bendJoints = function(turnJ, J){
-    var currJoint = this.joints[J];
-    
-    for(var i = 1; i < currJoint.attached.length; i++){
-        this.bendJoints(turnJ,currJoint.attached[i]);
-    }
-    
-    var baseJoint = this.getAttached(turnJ,0);
-    var turn = new PVector(currJoint.pos.x-baseJoint.pos.x, currJoint.pos.y-baseJoint.pos.y);
-    var turned = rotateVector(turn, this.joints[turnJ].angVelo);
-    
-    currJoint.pos.x = baseJoint.pos.x+turned.x;
-    currJoint.pos.y = baseJoint.pos.y+turned.y;
-    
-};
-
-
-body.prototype.checkJointBends = function(){
-    var bend = false;
-    
-    for(var i = 0; i < this.joints.length; i++){
-        
-        if(this.joints[i].angVelo !== 0){
-            this.bendJoints(i,i);
-            bend = true;
-        }
-    }
-    return bend;
-};
-
-body.prototype.controls = function(){
-    var turnVelo = PI/60;
-    if(keys[2]){
-        this.joints[0].angVelo = turnVelo;
-    }
-    else if(keys[3]){
-       this.joints[0].angVelo = -turnVelo; 
-    }
-    else{
-        this.joints[0].angVelo = 0; 
-    }
-    if(keys[4]){
-        this.joints[1].angVelo = turnVelo;
-    }
-    else if(keys[5]){
-        this.joints[1].angVelo = -turnVelo;
-    }
-    else{
-        this.joints[1].angVelo = 0; 
-    }
-    if(keys[6]){
-        this.velo.x = -2;
-    }
-    else if(keys[7]){
-        this.velo.x = 2;
-    }
-    if(keys[8]){
-        this.angVelo = -turnVelo;
-    }
-    else if(keys[9]){
-        this.angVelo = turnVelo;
-    }
-};
-
-
-body.prototype.getPE = function(floor){
-    return 1/2*this.mass*10/60*(floor-this.pos.y);
-};
-
-body.prototype.getKE = function(floor){
-    return 1/2*this.mass*pow(mag(this.velo.x,this.velo.y),2)+1/2*this.inertia*pow(this.angVelo,2);
-};
-
-
 
 
 body.prototype.act = function(){
@@ -1239,19 +1201,69 @@ body.prototype.act = function(){
   this.updateAng();
   this.rotate();
   this.updateParts();
-  //println(this.pos);
-  //println(this.inertia);
+
   if(this.checkJointBends()){
     this.updateCenter();
     this.updateParts();
   }
     
-  //println(this.pos);
-  //println(this.inertia);
-  //println('');
-  
 };
 
+game.prototype.act = function(){
+    //for (var i = 0; i<this.actors.length;i++){
+        //this.actors[i].updateVelo();
+    //}
+    for (var i = 0; i<this.actors.length;i++){
+        this.actors[i].act();
+    }
+    this.checkCollisions();
+};
+
+//optimizable
+
+body.prototype.drawLimbs = function(){
+    noStroke();
+    for(var i = 0; i < this.parts.length; i++){
+        fill(this.parts[i].color[0], this.parts[i].color[1], this.parts[i].color[2]);
+        quad(this.parts[i].vertexs.getPoint(0).x, this.parts[i].vertexs.getPoint(0).y, this.parts[i].vertexs.getPoint(1).x, this.parts[i].vertexs.getPoint(1).y, this.parts[i].vertexs.getPoint(2).x, this.parts[i].vertexs.getPoint(2).y, this.parts[i].vertexs.getPoint(3).x, this.parts[i].vertexs.getPoint(3).y);
+    }
+};
+
+body.prototype.drawBones = function() {
+    strokeWeight(3);
+    for(var i = 0; i < this.joints.length; i++){
+        stroke(this.joints[i].color[0], this.joints[i].color[1], this.joints[i].color[2]);
+        for(var j = 0; j < this.joints[i].attached.length; j++){
+            line(this.joints[i].pos.x, this.joints[i].pos.y, this.getAttached(i,j).pos.x, this.getAttached(i,j).pos.y);
+        }
+    }
+};
+
+body.prototype.drawJoints = function() {
+    strokeWeight(2);
+    for(var i = 0; i < this.joints.length; i++){
+        stroke(255,255,255);
+        point(this.joints[i].pos.x,this.joints[i].pos.y);
+        
+    }
+};
+
+//visuals
+body.prototype.draw = function() {
+    this.drawLimbs();
+    this.drawBones();
+    this.drawJoints();
+};
+
+game.prototype.draw = function(){
+    for (var i = 0; i<this.actors.length;i++){
+        this.actors[i].draw();
+    }
+    stroke(255, 0, 0);
+    line(-10000,this.floor,10000,this.floor);
+};
+
+//object initializations 
 body.prototype.createAng = function(x,y){
     var neck = new joint(x,y);
     var tail = new joint(x-50,y);
@@ -1389,24 +1401,8 @@ game.prototype.initGame = function(){
 };
 
 
-game.prototype.act = function(){
-    //for (var i = 0; i<this.actors.length;i++){
-        //this.actors[i].updateVelo();
-    //}
-    
-    for (var i = 0; i<this.actors.length;i++){
-        this.actors[i].act();
-    }
-    this.checkCollisions();
-};
 
-game.prototype.draw = function(){
-    for (var i = 0; i<this.actors.length;i++){
-        this.actors[i].draw();
-    }
-    stroke(255, 0, 0);
-    line(-10000,this.floor,10000,this.floor);
-};
+
 
 var game = new game();
 game.initGame();
