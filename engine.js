@@ -479,6 +479,7 @@ body.prototype.updateInertia = function(s){
 
 //whenever limbs lost or rotated
 body.prototype.updateCenter = function(){
+    this.mass = 0;
     for(var s = 0; s<this.subBodies.length; s++){
         var sbody = this.subBodies[s];
         var xSum = 0;
@@ -492,7 +493,7 @@ body.prototype.updateCenter = function(){
         sbody.pos.x = xSum/massSum;
         sbody.pos.y = ySum/massSum;
         sbody.mass = massSum;
-       
+        this.mass+=massSum;
         var oldInertia = sbody.inertia;
         this.updateInertia(s);
          if(sbody.inertia>0){
@@ -755,6 +756,7 @@ body.prototype.getKE = function(floor){
     return KE;
 };
 
+//1 and 2 could be more seperated
 game.prototype.collide = function(id1, id2, contacts){
     
     var veloChange = new PVector(0,0);
@@ -852,12 +854,7 @@ game.prototype.collide = function(id1, id2, contacts){
         
         
         
-        
         var sbody2 = body2.subBodies[part2.orgBody];
-        
-        
-        
-        
         
         
         var velo2;
@@ -928,11 +925,11 @@ game.prototype.collide = function(id1, id2, contacts){
         
         
         if(!oneSided){
-            xIpRange2[idS2][0] = min(xIpRange2[idS1][0],-impulse.x);
-            xIpRange2[idS2][1] = max(xIpRange2[idS1][1],-impulse.x);
+            xIpRange2[idS2][0] = min(xIpRange2[idS2][0],-impulse.x);
+            xIpRange2[idS2][1] = max(xIpRange2[idS2][1],-impulse.x);
             
             yIpRange2[idS2][0] = min(yIpRange2[idS2][0],-impulse.y);
-            yIpRange2[idS1][1] = max(yIpRange2[idS2][1],-impulse.y);
+            yIpRange2[idS2][1] = max(yIpRange2[idS2][1],-impulse.y);
             
             var angChange2=(getCross(relContact2,impulse)/sbody2.inertia);
             turnRange2[idS2][0] = min(turnRange2[idS2][0],-angChange2);
@@ -1268,8 +1265,10 @@ game.prototype.applyCollisions = function(){
     for(var i = 0; i<this.actors.length ;i++){
         for(var s = 0; s<this.actors[i].subBodies.length; s++){
             var sbody = this.actors[i].subBodies[s];
+
             sbody.pos.x+=this.actors[i].penetrate.x/max(1,this.actors[i].conCount);
             sbody.pos.y+=this.actors[i].penetrate.y/max(1,this.actors[i].conCount);
+
         }
     }
     
@@ -1336,6 +1335,7 @@ game.prototype.act = function(){
     //}
     for (var i = 0; i<this.actors.length;i++){
         this.actors[i].act();
+        
     }
     this.checkCollisions();
 };
@@ -1559,18 +1559,15 @@ body.prototype.createLimb = function(x,y){
 };
 
 game.prototype.initGame = function(){
-    /*
-    var ant = new body(200,300);
-    ant.createAnt(200,300);
-    
-    
-    var ant2 = new body(220,100);
-    ant2.createAnt(220,100);
-    */
+
     var limb = new body(100,100);
     limb.createLimb(100,100);
     
+    var limb2 = new body(200,200);
+    limb2.createLimb(200,200);
+    
     this.actors[0] = limb;
+    this.actors[1] = limb2;
     
 
 };
@@ -1587,6 +1584,7 @@ var draw = function() {
     oneFrame = false;
     
     background(0, 0, 0);
+    
     game.act();
     
     //translate(250-game.actors[0].pos.x,250-game.actors[0].pos.y);
