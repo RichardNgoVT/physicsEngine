@@ -157,8 +157,6 @@ pointStorage.prototype.setPointY = function(index,value){
 
 pointStorage.prototype.getPoint = function(index){
     return this.storage[this.present][index];
-    
-    
 };
 
 
@@ -252,6 +250,8 @@ var subBody= function(){
     this.mass = 0;
     
     this.maxlen = 0;
+    
+    this.rest = false;
 };
 
 var body= function(x,y){
@@ -853,7 +853,7 @@ game.prototype.collide = function(id1, id2, contacts){
     var yIpRange2 = [];
     var turnRange2 = [];
     
-    var contacted = false;
+    var collided = false;
     
     var oneSided = (id2 < 0);
     
@@ -892,19 +892,48 @@ game.prototype.collide = function(id1, id2, contacts){
             //println('');
         }
         
-        if(!oneSided && false){
-            this.actors[id1].parts[p1].color[0] = 245;
-            this.actors[id1].parts[p1].color[1] = 233;
-            this.actors[id1].parts[p1].color[2] = 66;
-            this.actors[id2].parts[p2].color[0] = 245;
-            this.actors[id2].parts[p2].color[1] = 164;
-            this.actors[id2].parts[p2].color[2] = 66;
-        }
         
-        drawPoints.push(contact);
         
         
         var part1 = body1.parts[p1];
+        var part2 = body2.parts[p2];
+        
+        var sbody1 = body1.subBodies[part1.orgBody];
+        var sbody2 = body2.subBodies[part2.orgBody];
+        
+        var velo1 = body1.getVertexVelo(contact,p1);
+        var velo2 = body2.getVertexVelo(contact,p2);
+        
+        var relVelo = new PVector(velo1.x-velo2.x,velo1.y-velo2.y);
+        
+        var veloCheck = getDot(relVelo, nrmDir);
+        
+        if(mag(relVelo.x,relVelo.y) < 1/60){
+            drawPoints.push(contact);
+            break;
+        }
+        
+        if(internal){//always true
+            if(mag(relVelo.x,relVelo.y) > 1/60){
+                this.global_Collision = true;
+            }
+        }
+        else{
+            if(veloCheck>0){
+                relVelo.x-=nrmDir.x*veloCheck;
+                relVelo.y-=nrmDir.y*veloCheck;
+            }
+            else{
+                this.global_Collision = true;
+            }
+        }
+        
+        collided = true;
+        
+        
+        var relContact1 = new PVector(contact.x-sbody1.pos.x,contact.y-sbody1.pos.y);
+        var relContact2 = new PVector(contact.x-sbody2.pos.x,contact.y-sbody2.pos.y);
+        
         var unique = true;
         for(var s = 0; s<sMem1.length; s++){
             if(part1.orgBody === sMem1[s]){
@@ -921,12 +950,11 @@ game.prototype.collide = function(id1, id2, contacts){
             turnRange1.push([0,0]);
             idS1 = sMem1.length-1;
         }
-        var sbody1 = body1.subBodies[part1.orgBody];
-        var velo1 = body1.getVertexVelo(contact,p1);
-        var relContact1 = new PVector(contact.x-sbody1.pos.x,contact.y-sbody1.pos.y);
         
         
-        var part2 = body2.parts[p2];
+        
+        
+        
         var unique = true;
         for(var s = 0; s<sMem2.length; s++){
             if(part2.orgBody === sMem2[s]){
@@ -943,31 +971,11 @@ game.prototype.collide = function(id1, id2, contacts){
             turnRange2.push([0,0]);
             idS2 = sMem2.length-1;
         }
-        var sbody2 = body2.subBodies[part2.orgBody];
-        var velo2 = body2.getVertexVelo(contact,p2);
-        var relContact2 = new PVector(contact.x-sbody2.pos.x,contact.y-sbody2.pos.y);
         
         
-        var relVelo = new PVector(velo1.x-velo2.x,velo1.y-velo2.y);
         
-        var veloCheck = getDot(relVelo, nrmDir);
         
-        if(internal){
-            if(mag(relVelo.x,relVelo.y) > 1/60){
-                this.global_Collision = true;
-            }
-        }
-        else{
-            if(veloCheck>0){
-                relVelo.x-=nrmDir.x*veloCheck;
-                relVelo.y-=nrmDir.y*veloCheck;
-            }
-            else{
-                this.global_Collision = true;
-            }
-        }
         
-        contacted = true;
         
         var impulse = new PVector(0,0);
         
@@ -983,8 +991,8 @@ game.prototype.collide = function(id1, id2, contacts){
         impulse.x = -(1+dampen*part1.bounce)*(relVelo.x)/(res1+res2);
         impulse.y = -(1+dampen*part1.bounce)*(relVelo.y)/(res1+res2);
         
-        
-        drawLines.push([contact,new PVector(contact.x+impulse.x,contact.y+impulse.y)]);
+        //drawPoints.push(contact);
+        //drawLines.push([contact,new PVector(contact.x+impulse.x,contact.y+impulse.y)]);
         
         xIpRange1[idS1][0] = min(xIpRange1[idS1][0],impulse.x);
         xIpRange1[idS1][1] = max(xIpRange1[idS1][1],impulse.x);
@@ -1007,20 +1015,46 @@ game.prototype.collide = function(id1, id2, contacts){
         turnRange2[idS2][0] = min(turnRange2[idS2][0],-angChange2);
         turnRange2[idS2][1] = max(turnRange2[idS2][1],-angChange2);
         
-
-    }
-    for(var s = 0; s<sMem1.length; s++){
-        var sbody1 = body1.subBodies[sMem1[s]];
-        sbody1.velo.x+=(xIpRange1[s][0]+xIpRange1[s][1])/sbody1.mass;
-        sbody1.velo.y+=(yIpRange1[s][0]+yIpRange1[s][1])/sbody1.mass;
-        sbody1.angVelo+=turnRange1[s][0]+turnRange1[s][1];
+        
+        
+        if(!oneSided && false){
+            this.actors[id1].parts[p1].color[0] = 245;
+            this.actors[id1].parts[p1].color[1] = 233;
+            this.actors[id1].parts[p1].color[2] = 66;
+            this.actors[id2].parts[p2].color[0] = 245;
+            this.actors[id2].parts[p2].color[1] = 164;
+            this.actors[id2].parts[p2].color[2] = 66;
+        }
+        
+        
     }
     
-    for(var s = 0; s<sMem2.length; s++){
-        var sbody2 = body2.subBodies[sMem2[s]];
-        sbody2.velo.x+=(xIpRange2[s][0]+xIpRange2[s][1])/sbody2.mass;
-        sbody2.velo.y+=(yIpRange2[s][0]+yIpRange2[s][1])/sbody2.mass;
-        sbody2.angVelo+=turnRange2[s][0]+turnRange2[s][1];
+    if(collided){
+        for(var s = 0; s<sMem1.length; s++){
+            var sbody1 = body1.subBodies[sMem1[s]];
+            sbody1.velo.x+=(xIpRange1[s][0]+xIpRange1[s][1])/sbody1.mass;
+            sbody1.velo.y+=(yIpRange1[s][0]+yIpRange1[s][1])/sbody1.mass;
+            sbody1.angVelo+=turnRange1[s][0]+turnRange1[s][1];
+        }
+        
+        for(var s = 0; s<sMem2.length; s++){
+            var sbody2 = body2.subBodies[sMem2[s]];
+            sbody2.velo.x+=(xIpRange2[s][0]+xIpRange2[s][1])/sbody2.mass;
+            sbody2.velo.y+=(yIpRange2[s][0]+yIpRange2[s][1])/sbody2.mass;
+            sbody2.angVelo+=turnRange2[s][0]+turnRange2[s][1];
+        }
+    }
+    else{
+        for(var s = 0; s<sMem1.length; s++){
+            var sbody1 = body1.subBodies[sMem1[s]];
+            sbody1.rest = true;
+        }
+        
+        for(var s = 0; s<sMem2.length; s++){
+            var sbody2 = body2.subBodies[sMem2[s]];
+            sbody2.rest = true;
+        }
+        
     }
     
     
@@ -1770,13 +1804,30 @@ game.prototype.initGame = function(){
     limb2.createLimbX(200,200);
     
     this.actors[0] = limb;
-    //this.actors[1] = limb2;
+    this.actors[1] = limb2;
     
 
 };
 
 
+var clock = function(x,y){
+    this.base = new PVector(x,y);
+    this.radius = 25;
+    this.tip = new PVector(0,-this.radius);
+    this.angVelo = 2*PI/(60*3);
+    this.sWeight = 3;
+    this.color = [255,255,255];
+};
 
+clock.prototype.act = function(){
+    strokeWeight(this.sWeight);
+    stroke(this.color[0],this.color[1],this.color[2]);
+    line(this.base.x,this.base.y,this.base.x+this.tip.x,this.base.y+this.tip.y);
+    this.tip = rotateVector(this.tip,this.angVelo);
+    
+};
+
+var timer = new clock(50,50);
 
 
 var game = new game();
@@ -1784,35 +1835,36 @@ game.initGame();
 var draw = function() {
     pushMatrix();
     if(keys[0] || oneFrame){
-    oneFrame = false;
-    
-    background(0, 0, 0);
-    
-    game.act();
-    
-    //translate(250-game.actors[0].pos.x,250-game.actors[0].pos.y);
-    
-    game.draw();
-    
-    
-    
-    
-    for(var d = 0; d<drawLines.length; d++){
-        strokeWeight(3);
-        stroke(0, 21, 255);
-        line(drawLines[d][0].x,drawLines[d][0].y,drawLines[d][1].x,drawLines[d][1].y);
-    }
-    drawLines = [];
-    
-    for(var d = 0; d<drawPoints.length; d++){
-        strokeWeight(3);
-        stroke(255, 225, 0);
-        point(drawPoints[d].x,drawPoints[d].y);
-    }
-    drawPoints = [];
-    
+        oneFrame = false;
+        
+        background(0, 0, 0);
+        
+        game.act();
+        
+        //translate(250-game.actors[0].pos.x,250-game.actors[0].pos.y);
+        
+        game.draw();
+        
+        
+        
+        
+        for(var d = 0; d<drawLines.length; d++){
+            strokeWeight(3);
+            stroke(0, 21, 255);
+            line(drawLines[d][0].x,drawLines[d][0].y,drawLines[d][1].x,drawLines[d][1].y);
+        }
+        drawLines = [];
+        
+        for(var d = 0; d<drawPoints.length; d++){
+            strokeWeight(3);
+            stroke(255, 225, 0);
+            point(drawPoints[d].x,drawPoints[d].y);
+        }
+        drawPoints = [];
+        timer.act();
     }
     popMatrix();
+    
     
 };
 
