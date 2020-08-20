@@ -232,6 +232,8 @@ var joint = function(x, y){
 };
 
 var subBody= function(){
+    this.id = 0;
+    
     this.jointIds = [];
     this.partIds = [];
     
@@ -252,6 +254,9 @@ var subBody= function(){
     this.maxlen = 0;
     
     this.rest = false;
+    
+    this.stableS = [[0,-1,new PVector(0,0)],[0,-1,new PVector(0,0)]]; //source
+    this.stableC = []; //contributions
 };
 
 var body= function(x,y){
@@ -753,6 +758,7 @@ body.prototype.relaxJoint = function(j){
     var oldAngVelo = 0.0+oldSBody.angVelo;
     
     this.subBodies[j] = new subBody();
+    this.subBodies[j].id = j;
     this.activeSBs.push(j);
     this.setOriginBodies(j,j);
     this.joints[j].state = 1;
@@ -845,23 +851,14 @@ game.prototype.collide = function(id1, id2, contacts){
     var veloChange = new PVector(0,0);
     var angChange = 0;
     
-    var xIpRange1 = [];
-    var yIpRange1 = [];
-    var turnRange1 = [];
+    var xIpRange = [0,0];
+    var yIpRange = [0,0];
+    var turnRange1 = [0,0];
+    var turnRange2 = [0,0];
     
-    var xIpRange2 = [];
-    var yIpRange2 = [];
-    var turnRange2 = [];
-    
-    var collided = false;
+    var resolved = true;
     
     var oneSided = (id2 < 0);
-    
-    var sMem1 = [];
-    var idS1;
-    
-    var sMem2 = [];
-    var idS2;
     
     var body1 = this.actors[id1];
     var body2;
@@ -870,6 +867,17 @@ game.prototype.collide = function(id1, id2, contacts){
     }
     else{
         body2 = this.actors[id2];   
+    }
+    
+    var sbody1 = body1.subBodies[body1.parts[contacts[0][0]].orgBody];
+    var sbody2 = body2.subBodies[body2.parts[contacts[0][1]].orgBody];
+    
+    
+    var internal = false;
+    var dampen = 1;
+    if(id1 === id2){
+        internal = true;
+        dampen = 0;
     }
     
     for(var i = 0; i<contacts.length; i++){
@@ -882,100 +890,52 @@ game.prototype.collide = function(id1, id2, contacts){
         if(oneSided){//condition unessesary
             this.setImobileB(contact.x,contact.y);
         }
-        var internal = false;
-        var dampen = 1;
-        if(nrmDir.x === 0 && nrmDir.y === 0){
-            internal = true;
-            dampen = 0;
-            //println(this.actors[id1].subBodies[this.actors[id1].parts[p1].orgBody].inertia);
-            //println(this.actors[id2].subBodies[this.actors[id2].parts[p2].orgBody].inertia);
-            //println('');
-        }
-        
-        
         
         
         var part1 = body1.parts[p1];
         var part2 = body2.parts[p2];
         
-        var sbody1 = body1.subBodies[part1.orgBody];
-        var sbody2 = body2.subBodies[part2.orgBody];
         
-        var velo1 = body1.getVertexVelo(contact,p1);
-        var velo2 = body2.getVertexVelo(contact,p2);
+        var velo1 = sbody1.getVertexVelo(contact);
+        var velo2 = sbody2.getVertexVelo(contact);
         
         var relVelo = new PVector(velo1.x-velo2.x,velo1.y-velo2.y);
         
-        var veloCheck = getDot(relVelo, nrmDir);
         
         if(mag(relVelo.x,relVelo.y) < 1/60){
             drawPoints.push(contact);
-            break;
+            //break;
         }
         
+        
+        
         if(internal){//always true
-            if(mag(relVelo.x,relVelo.y) > 1/60){
+            if(mag(relVelo.x,relVelo.y) > 5/60){
+                sbody1.resolved = false;
+                sbody2.resolved = false;
                 this.global_Collision = true;
+                resolved = false;
             }
         }
         else{
+            var veloCheck = getDot(relVelo, nrmDir);
             if(veloCheck>0){
                 relVelo.x-=nrmDir.x*veloCheck;
                 relVelo.y-=nrmDir.y*veloCheck;
             }
             else{
+                sbody1.resolved = false;
+                sbody2.resolved = false;
                 this.global_Collision = true;
+                resolved = false;
             }
         }
         
-        collided = true;
+        
         
         
         var relContact1 = new PVector(contact.x-sbody1.pos.x,contact.y-sbody1.pos.y);
         var relContact2 = new PVector(contact.x-sbody2.pos.x,contact.y-sbody2.pos.y);
-        
-        var unique = true;
-        for(var s = 0; s<sMem1.length; s++){
-            if(part1.orgBody === sMem1[s]){
-                unique = false;
-                idS1 = s;
-                break;
-            }
-        }
-        
-        if(unique){
-            sMem1.push(part1.orgBody);
-            xIpRange1.push([0,0]);
-            yIpRange1.push([0,0]);
-            turnRange1.push([0,0]);
-            idS1 = sMem1.length-1;
-        }
-        
-        
-        
-        
-        
-        var unique = true;
-        for(var s = 0; s<sMem2.length; s++){
-            if(part2.orgBody === sMem2[s]){
-                unique = false;
-                idS2 = s;
-                break;
-            }
-        }
-    
-        if(unique){
-            sMem2.push(part2.orgBody);
-            xIpRange2.push([0,0]);
-            yIpRange2.push([0,0]);
-            turnRange2.push([0,0]);
-            idS2 = sMem2.length-1;
-        }
-        
-        
-        
-        
-        
         
         var impulse = new PVector(0,0);
         
@@ -991,29 +951,22 @@ game.prototype.collide = function(id1, id2, contacts){
         impulse.x = -(1+dampen*part1.bounce)*(relVelo.x)/(res1+res2);
         impulse.y = -(1+dampen*part1.bounce)*(relVelo.y)/(res1+res2);
         
-        //drawPoints.push(contact);
+        
         //drawLines.push([contact,new PVector(contact.x+impulse.x,contact.y+impulse.y)]);
         
-        xIpRange1[idS1][0] = min(xIpRange1[idS1][0],impulse.x);
-        xIpRange1[idS1][1] = max(xIpRange1[idS1][1],impulse.x);
+        xIpRange[0] = min(xIpRange[0], impulse.x);
+        xIpRange[1] = max(xIpRange[1], impulse.x);
         
-        yIpRange1[idS1][0] = min(yIpRange1[idS1][0],impulse.y);
-        yIpRange1[idS1][1] = max(yIpRange1[idS1][1],impulse.y);
+        yIpRange[0] = min(yIpRange[0], impulse.y);
+        yIpRange[1] = max(yIpRange[1], impulse.y);
 
         var angChange1=(getCross(relContact1,impulse)/sbody1.inertia);
-        turnRange1[idS1][0] = min(turnRange1[idS1][0],angChange1);
-        turnRange1[idS1][1] = max(turnRange1[idS1][1],angChange1);
-        
-        
-        xIpRange2[idS2][0] = min(xIpRange2[idS2][0],-impulse.x);
-        xIpRange2[idS2][1] = max(xIpRange2[idS2][1],-impulse.x);
-        
-        yIpRange2[idS2][0] = min(yIpRange2[idS2][0],-impulse.y);
-        yIpRange2[idS2][1] = max(yIpRange2[idS2][1],-impulse.y);
+        turnRange1[0] = min(turnRange1[0], angChange1);
+        turnRange1[1] = max(turnRange1[1], angChange1);
         
         var angChange2=(getCross(relContact2,impulse)/sbody2.inertia);
-        turnRange2[idS2][0] = min(turnRange2[idS2][0],-angChange2);
-        turnRange2[idS2][1] = max(turnRange2[idS2][1],-angChange2);
+        turnRange2[0] = min(turnRange2[0], angChange2);
+        turnRange2[1] = max(turnRange2[1], angChange2);
         
         
         
@@ -1029,37 +982,19 @@ game.prototype.collide = function(id1, id2, contacts){
         
     }
     
-    if(collided){
-        for(var s = 0; s<sMem1.length; s++){
-            var sbody1 = body1.subBodies[sMem1[s]];
-            sbody1.velo.x+=(xIpRange1[s][0]+xIpRange1[s][1])/sbody1.mass;
-            sbody1.velo.y+=(yIpRange1[s][0]+yIpRange1[s][1])/sbody1.mass;
-            sbody1.angVelo+=turnRange1[s][0]+turnRange1[s][1];
-        }
-        
-        for(var s = 0; s<sMem2.length; s++){
-            var sbody2 = body2.subBodies[sMem2[s]];
-            sbody2.velo.x+=(xIpRange2[s][0]+xIpRange2[s][1])/sbody2.mass;
-            sbody2.velo.y+=(yIpRange2[s][0]+yIpRange2[s][1])/sbody2.mass;
-            sbody2.angVelo+=turnRange2[s][0]+turnRange2[s][1];
-        }
-    }
-    else{
-        for(var s = 0; s<sMem1.length; s++){
-            var sbody1 = body1.subBodies[sMem1[s]];
-            sbody1.rest = true;
-        }
-        
-        for(var s = 0; s<sMem2.length; s++){
-            var sbody2 = body2.subBodies[sMem2[s]];
-            sbody2.rest = true;
-        }
-        
-    }
+    sbody1.velo.x+=(xIpRange[0]+xIpRange[1])/sbody1.mass;
+    sbody1.velo.y+=(yIpRange[0]+yIpRange[1])/sbody1.mass;
+    sbody1.angVelo+=turnRange1[0]+turnRange1[1];
+
+    sbody2.velo.x-=(xIpRange[0]+xIpRange[1])/sbody2.mass;
+    sbody2.velo.y-=(yIpRange[0]+yIpRange[1])/sbody2.mass;
+    sbody2.angVelo-=turnRange2[0]+turnRange2[1];
+    
+    
+
     
     
 };
-
 
 
 //sat collisions check
@@ -1102,206 +1037,217 @@ game.prototype.checkActvAct = function(id1, id2){
     var collided = false;
     
     
-    
-    for(var p1 = 0; p1 < body1.parts.length; p1++){
-        
-        
-        var vertexs1 = body1.parts[p1].vertexs;
-        
-        if(vertexs1.length%2===0){
-            simple1 = 2;
-        }
-        else{
-            simple1 = 1;
-        }
-        
-        var nrmDirs1 = [];
-        
-
-        for(var v1 = 0; v1 < vertexs1.length/simple1; v1++){
+    for(var s1 = 0; s1 < body1.activeSBs.length; s1++){
+        var sbody1 = body1.subBodies[body1.activeSBs[s1]];
+        for(var p1 = 0; p1 < sbody1.partIds.length; p1++){
+            var part1 = body1.parts[sbody1.partIds[p1]];
             
+            var vertexs1 =part1.vertexs;
             
-            
-            nrmDirs1.push(getNrmUV(vertexs1.getPoint(v1),vertexs1.getPoint((v1+1)%vertexs1.length)));
-        }
-        
-        
-        for(var n1 = 0; n1<nrmDirs1.length; n1++){
-            var holder = getBounds(vertexs1,nrmDirs1[n1]);
-            bounds11[n1]=holder[0];
-            boundsI11[n1]=holder[1];
-        }
-        
-        
-        
-        for(var p2 = 0; p2 < body2.parts.length; p2++){
-            var vertexs2 = body2.parts[p2].vertexs;
-            if(vertexs2.length%2===0){
-                simple2 = 2;
+            if(vertexs1.length%2===0){
+                simple1 = 2;
             }
             else{
-                simple2 = 1;
+                simple1 = 1;
             }
-            var nrmDirs2 = [];
-            for(var v2 = 0; v2 < vertexs2.length/simple2; v2++){
-                nrmDirs2.push(getNrmUV(vertexs2.getPoint(v2),vertexs2.getPoint((v2+1)%vertexs2.length)));
+            
+            var nrmDirs1 = [];
+            
+    
+            for(var v1 = 0; v1 < vertexs1.length/simple1; v1++){
+                
+                
+                
+                nrmDirs1.push(getNrmUV(vertexs1.getPoint(v1),vertexs1.getPoint((v1+1)%vertexs1.length)));
             }
+            
             
             for(var n1 = 0; n1<nrmDirs1.length; n1++){
-                var holder = getBounds(vertexs2,nrmDirs1[n1]);
-                bounds12[n1]=holder[0];
-                boundsI12[n1]=holder[1];
+                var holder = getBounds(vertexs1,nrmDirs1[n1]);
+                bounds11[n1]=holder[0];
+                boundsI11[n1]=holder[1];
             }
             
             
-            for(var n2 = 0; n2<nrmDirs2.length; n2++){
-                
-                var holder = getBounds(vertexs1,nrmDirs2[n2]);
-                bounds21[n2] = holder[0];
-                boundsI21[n2] = holder[1];
-                
-                var holder = getBounds(vertexs2,nrmDirs2[n2]);
-                bounds22[n2] = holder[0];
-                boundsI22[n2] = holder[1];
-            }
-
             
-            var collision = true;
-            var pener = 0;
-            var penI;
-            var minPen = Infinity;
-            var con_nrmDir = new PVector(0,0);
-            //var edgeGuess = 0;
-            
-            
+            for(var s2 = 0; s2 < body2.activeSBs.length; s2++){
+                collided = false;
+                var contacts = [];
+                var sbody2 = body2.subBodies[body2.activeSBs[s2]];
+                for(var p2 = 0; p2 < sbody2.partIds.length; p2++){
+                    var part2 = body2.parts[sbody2.partIds[p2]];
+                    var vertexs2 = part2.vertexs;
+                    if(vertexs2.length%2===0){
+                        simple2 = 2;
+                    }
+                    else{
+                        simple2 = 1;
+                    }
+                    var nrmDirs2 = [];
+                    for(var v2 = 0; v2 < vertexs2.length/simple2; v2++){
+                        nrmDirs2.push(getNrmUV(vertexs2.getPoint(v2),vertexs2.getPoint((v2+1)%vertexs2.length)));
+                    }
+                    
+                    for(var n1 = 0; n1<nrmDirs1.length; n1++){
+                        var holder = getBounds(vertexs2,nrmDirs1[n1]);
+                        bounds12[n1]=holder[0];
+                        boundsI12[n1]=holder[1];
+                    }
+                    
+                    
+                    for(var n2 = 0; n2<nrmDirs2.length; n2++){
+                        
+                        var holder = getBounds(vertexs1,nrmDirs2[n2]);
+                        bounds21[n2] = holder[0];
+                        boundsI21[n2] = holder[1];
+                        
+                        var holder = getBounds(vertexs2,nrmDirs2[n2]);
+                        bounds22[n2] = holder[0];
+                        boundsI22[n2] = holder[1];
+                    }
+        
+                    
+                    var collision = true;
+                    var pener = 0;
+                    var penI;
+                    var minPen = Infinity;
+                    var con_nrmDir = new PVector(0,0);
+                    //var edgeGuess = 0;
+                    
+                    
+                   
+                    for(var b = 0; b<nrmDirs1.length; b++){
+                        if(bounds11[b][0]>bounds12[b][1] || bounds11[b][1]<bounds12[b][0]){
+                            collision = false;
+                            break;
+                        }
+                        else{
+                            if(minPen>bounds11[b][1]-bounds12[b][0]){
+                                //side correctly chosen
+                                //store min of 2
+                                
+                                    //outdated if more complex shape and joints, change to blacklist method
+                                    pener = 2;
+                                    penI = boundsI12[b][0];
+                                    minPen = bounds11[b][1]-bounds12[b][0];
+                                    con_nrmDir.x = nrmDirs1[b].x;
+                                    con_nrmDir.y = nrmDirs1[b].y;
+                                
+                            }
+                            
+                            if(minPen>bounds12[b][1]-bounds11[b][0]){
+                                //get opposite side
+                                //store max of 2
+                                //if(vertexs1.length%2===0){//parallel
+                                
+                                pener = 2;
+                                penI = boundsI12[b][1];
+                                minPen = bounds12[b][1]-bounds11[b][0];
+                                con_nrmDir.x = nrmDirs1[b].x;
+                                con_nrmDir.y = nrmDirs1[b].y;
+                                con_nrmDir.x*=-1;
+                                con_nrmDir.y*=-1;
+                                //}
+                                
+                                
+                            }
+                        }
+                            
+                    }
+                    
+                    if(!collision){
+                        continue;
+                    }
+        
+                    
+                    for(var b = 0; b<nrmDirs2.length; b++){
+                        if(bounds21[b][0]>bounds22[b][1] || bounds21[b][1]<bounds22[b][0]){
+                            collision = false;
+                            break;
+                        }
+                        else{
+                            if(minPen>bounds22[b][1]-bounds21[b][0]){
+                                //side correctly chosen
+                                //store min of 1
+                                
+                                    
+                                    pener = 1;
+                                    penI = boundsI21[b][0];
+                                    minPen = bounds22[b][1]-bounds21[b][0];
+                                    con_nrmDir.x = nrmDirs2[b].x;
+                                    con_nrmDir.y = nrmDirs2[b].y;
+                                    
+                            }
+                            
+                            if(minPen>bounds21[b][1]-bounds22[b][0]){
+                                //get opposite side
+                                //store max of 1
+                                
+                                //if(vertexs2.length%2===0){//parallel
+                                
+                                pener = 1;
+                                penI = boundsI21[b][1];
+                                minPen = bounds21[b][1]-bounds22[b][0];
+                                con_nrmDir.x = nrmDirs2[b].x;
+                                con_nrmDir.y = nrmDirs2[b].y;
+                                con_nrmDir.x*=-1;
+                                con_nrmDir.y*=-1;
+                                
+                                //}
+                                
+                                
+                            }
+                            
+                        }
+                    }
+                    
+                    if(collision){
+                        collided = true;
+        
+                        var penVertexs;
+                        var edgeVertexs;
+                        
+                        
+                        
+                        if(pener === 1){
+                            penVertexs = vertexs1;
+                            
+                            edgeVertexs = vertexs2;
+        
+                        }
+                        else{
+                            penVertexs = vertexs2;
+                            
+                            con_nrmDir.x*=-1;
+                            con_nrmDir.y*=-1;
+                            edgeVertexs = vertexs1;
+                        }
+        
+                        xPenRange[0] = min(xPenRange[0], con_nrmDir.x*minPen);
+                        xPenRange[1] = max(xPenRange[1], con_nrmDir.x*minPen);
+                        
+                        yPenRange[0] = min(yPenRange[0], con_nrmDir.y*minPen);
+                        yPenRange[1] = max(yPenRange[1], con_nrmDir.y*minPen);
+                        
+                        
+                        for(var i = 0; i<penVertexs.length; i++){
+                            if(checkBounded(penVertexs.getPoint(i), edgeVertexs)){
+                                
+                                contacts.push([part1.id,part2.id,penVertexs.getPoint(i),con_nrmDir]);
+                            }
+                        }
+                            
            
-            for(var b = 0; b<nrmDirs1.length; b++){
-                if(bounds11[b][0]>bounds12[b][1] || bounds11[b][1]<bounds12[b][0]){
-                    collision = false;
-                    break;
+                    }
+                    
                 }
-                else{
-                    if(minPen>bounds11[b][1]-bounds12[b][0]){
-                        //side correctly chosen
-                        //store min of 2
-                        
-                            //outdated if more complex shape and joints, change to blacklist method
-                            pener = 2;
-                            penI = boundsI12[b][0];
-                            minPen = bounds11[b][1]-bounds12[b][0];
-                            con_nrmDir.x = nrmDirs1[b].x;
-                            con_nrmDir.y = nrmDirs1[b].y;
-                        
-                    }
-                    
-                    if(minPen>bounds12[b][1]-bounds11[b][0]){
-                        //get opposite side
-                        //store max of 2
-                        //if(vertexs1.length%2===0){//parallel
-                        
-                        pener = 2;
-                        penI = boundsI12[b][1];
-                        minPen = bounds12[b][1]-bounds11[b][0];
-                        con_nrmDir.x = nrmDirs1[b].x;
-                        con_nrmDir.y = nrmDirs1[b].y;
-                        con_nrmDir.x*=-1;
-                        con_nrmDir.y*=-1;
-                        //}
-                        
-                        
-                    }
-                }
-                    
-            }
-            
-            if(!collision){
-                continue;
-            }
-
-            
-            for(var b = 0; b<nrmDirs2.length; b++){
-                if(bounds21[b][0]>bounds22[b][1] || bounds21[b][1]<bounds22[b][0]){
-                    collision = false;
-                    break;
-                }
-                else{
-                    if(minPen>bounds22[b][1]-bounds21[b][0]){
-                        //side correctly chosen
-                        //store min of 1
-                        
-                            
-                            pener = 1;
-                            penI = boundsI21[b][0];
-                            minPen = bounds22[b][1]-bounds21[b][0];
-                            con_nrmDir.x = nrmDirs2[b].x;
-                            con_nrmDir.y = nrmDirs2[b].y;
-                            
-                    }
-                    
-                    if(minPen>bounds21[b][1]-bounds22[b][0]){
-                        //get opposite side
-                        //store max of 1
-                        
-                        //if(vertexs2.length%2===0){//parallel
-                        
-                        pener = 1;
-                        penI = boundsI21[b][1];
-                        minPen = bounds21[b][1]-bounds22[b][0];
-                        con_nrmDir.x = nrmDirs2[b].x;
-                        con_nrmDir.y = nrmDirs2[b].y;
-                        con_nrmDir.x*=-1;
-                        con_nrmDir.y*=-1;
-                        
-                        //}
-                        
-                        
-                    }
-                    
+                if(collided){
+                    this.contacts.push([id1,id2,contacts]);
                 }
             }
-            
-            if(collision){
-                collided = true;
-
-                var penVertexs;
-                var edgeVertexs;
-                
-                
-                
-                if(pener === 1){
-                    penVertexs = vertexs1;
-                    
-                    edgeVertexs = vertexs2;
-
-                }
-                else{
-                    penVertexs = vertexs2;
-                    
-                    con_nrmDir.x*=-1;
-                    con_nrmDir.y*=-1;
-                    edgeVertexs = vertexs1;
-                }
-
-                xPenRange[0] = min(xPenRange[0], con_nrmDir.x*minPen);
-                xPenRange[1] = max(xPenRange[1], con_nrmDir.x*minPen);
-                
-                yPenRange[0] = min(yPenRange[0], con_nrmDir.y*minPen);
-                yPenRange[1] = max(yPenRange[1], con_nrmDir.y*minPen);
-                
-                
-                for(var i = 0; i<penVertexs.length; i++){
-                    if(checkBounded(penVertexs.getPoint(i), edgeVertexs)){
-                        
-                        contacts.push([p1,p2,penVertexs.getPoint(i),con_nrmDir]);
-                    }
-                }
-                    
-   
-            }
-            
         }
     }
-    if(collided){
+    if((xPenRange[0]+xPenRange[1]) !== 0 || (yPenRange[0]+yPenRange[1]) !== 0){
         var totalMass = body1.mass+body2.mass;
         var partialPen = 0.3;
         body1.penetrate.x+=(xPenRange[0]+xPenRange[1])*partialPen*body1.mass/totalMass;
@@ -1311,8 +1257,6 @@ game.prototype.checkActvAct = function(id1, id2){
         body2.penetrate.x-=(xPenRange[0]+xPenRange[1])*partialPen*body2.mass/totalMass;
         body2.penetrate.y-=(yPenRange[0]+yPenRange[1])*partialPen*body2.mass/totalMass;
         body2.conCount+=1;
-        
-        this.contacts.push([id1,id2,contacts]);
     }
     
     
@@ -1322,21 +1266,34 @@ game.prototype.checkActvAct = function(id1, id2){
 //if point is under floor, has downwards velocity, and of a unique joint, collide
 game.prototype.checkActvFloor = function(id){
     
-    var contacts = [];
+    var contacts;
     
     var maxPenetrate = 0;
     
     var nrmDir = new PVector(0,-1);
+    var body = this.actors[id];
     
-    for(var i = 0; i < this.actors[id].parts.length; i++){
-        for(var j = 0; j < this.actors[id].parts[i].vertexs.length; j++){
-            if(this.actors[id].parts[i].vertexs.getPoint(j).y>this.floor){
-                if(this.actors[id].parts[i].vertexs.getPoint(j).y>maxPenetrate){
-                   maxPenetrate=this.actors[id].parts[i].vertexs.getPoint(j).y;
-                   //this.actors[id].penetrate.y=(this.floor-maxPenetrate+this.actors[id].velo.y);
+    
+    
+    for(var s = 0; s < body.activeSBs.length; s++){
+        var contacts = [];
+        var collided = false;
+        var sbody = body.subBodies[body.activeSBs[s]];
+        for(var p = 0; p < sbody.partIds.length; p++){
+            var part = body.parts[sbody.partIds[p]];
+            for(var v = 0; v < part.vertexs.length; v++){
+                if(part.vertexs.getPoint(v).y>this.floor){
+                    if(part.vertexs.getPoint(v).y>maxPenetrate){
+                       maxPenetrate=part.vertexs.getPoint(v).y;
+                       //this.actors[id].penetrate.y=(this.floor-maxPenetrate+this.actors[id].velo.y);
+                    }
+                    collided = true;
+                    contacts.push([part.id,0,part.vertexs.getPoint(v),nrmDir]);
                 }
-                contacts.push([i,0,this.actors[id].parts[i].vertexs.getPoint(j),nrmDir]);
             }
+        }
+        if(collided){
+            this.contacts.push([id,-1,contacts]);
         }
     }
     
@@ -1345,18 +1302,119 @@ game.prototype.checkActvFloor = function(id){
     if(maxPenetrate>0){
         this.actors[id].penetrate.y+=(this.floor-maxPenetrate)*partialPen*weight;
         this.actors[id].conCount+=weight;
-        
-        this.contacts.push([id,-1,contacts]);
-        
+    }
+    
+};
+
+game.prototype.setRestedSBodies = function(){
+    for(var i = 0; i<this.actors.length;i++){
+        for(var b = 0; b<this.actors[i].activeSBs.length; b++){
+            var sbody = this.actors[i].subBodies[this.actors[i].activeSBs[b]];
+            if(!sbody.rest){
+                if(sbody.stableS[0][1]>=0 && sbody.stableS[1][1]>=0){
+                    sbody.rest = true;
+                    println(i);
+                }
+            }
+        }
     }
 };
 
+game.prototype.setStablePoints = function(){
+    var still = 1/60;
+    for(var c = 0; c<this.contacts.length; c++){
+        var id1 = this.contacts[c][0];
+        var id2 = this.contacts[c][1];
+
+        var oneSided = (id2 < 0);
+    
+        var body1 = this.actors[id1];
+        var body2;
+        if(oneSided){
+            body2 = this.imobileB;
+        }
+        else{
+            body2 = this.actors[id2];   
+        }
+        
+        var contInfo = this.contacts[c][2];
+        
+        var sbody1 = body1.subBodies[body1.parts[contInfo[0][0]].orgBody];
+        var sbody2 = body2.subBodies[body2.parts[contInfo[0][1]].orgBody];
+        
+        if(c === this.contacts.length-1){
+            //println(sbody1.rest+' '+sbody2.rest);
+        }
+        
+        if((!sbody1.rest && sbody2.rest) || (!sbody2.rest && sbody1.rest)){
+            var rested = true;
+            var id;
+            var sbody;
+            var sbodySup;
+            var p;
+            if(!sbody1.rest){
+                id = id1;
+                sbody = sbody1;
+                sbodySup = sbody2;
+                p = 0;
+            }
+            else{
+                id = id2;
+                sbody = sbody2;
+                sbodySup = sbody1;
+                p = 1;
+            }
+            var accel = normalize(sbody.accel);
+            var accelNrm = getNrmUV(accel);
+            
+            //stillness check (might be easier/quicker to just have a ang limit as well)
+            
+            if(mag(sbody.velo.x,sbody.velo.y) > still){
+                continue;
+            }
+            
+            for(var i = 0; i<contInfo.length; i++){
+                var point = contInfo[i][2];
+                
+                var velo = sbody.getVertexVelo(point);
+                
+                if(mag(velo.x,velo.y) > still){
+                    break;
+                }
+                  
+                //supported check
+                if(getDot(getUV(sbody.pos,point),accel)>0){
+                    
+                    sbodySup.stableC.push([id,sbody.id]);//inform of support
+                    
+                    var supportDist = getDot(accelNrm, point);
+                    var baseDist = getDot(accelNrm,sbody.pos);
+                    if(supportDist<=baseDist){
+                        
+                        if(sbody.stableS[0][1]<0 || (sbody.stableS[0][1]>=0 && supportDist< getDot(accelNrm,sbody.stableS[0][2]))){
+                            sbody.stableS[0] = [id,contInfo[i][p],point];
+                        }
+                    }
+                    
+                    if(supportDist>=baseDist){
+                        if(sbody.stableS[1][1]<0 || (sbody.stableS[1][1]>=0 && supportDist> getDot(accelNrm,sbody.stableS[1][2]))){//unset when part id is -1
+                            sbody.stableS[1] = [id,contInfo[i][p],point];
+                        }
+                    }
+                    //println(sbody.stableS);
+                }
+            }
+        }
+    }
+    
+};
 
 game.prototype.applyCollisions = function(){
     var resCounter = 0;
     this.global_Collision = true;
     while(this.global_Collision){
         this.global_Collision = false;
+        //println(resCounter);
         for(var i = 0; i<this.contacts.length; i++){
             
             this.collide(this.contacts[i][0],this.contacts[i][1],this.contacts[i][2]);
@@ -1366,6 +1424,11 @@ game.prototype.applyCollisions = function(){
         }
         resCounter+=1;
     }
+    
+    this.setStablePoints();
+    
+    this.setRestedSBodies();
+    
     
     for(var i = 0; i<this.actors.length ;i++){
         for(var s = 0; s<this.actors[i].activeSBs.length; s++){
@@ -1511,127 +1574,6 @@ game.prototype.draw = function(){
 };
 
 //object initializations 
-body.prototype.createAng = function(x,y){
-    var neck = new joint(x,y);
-    var tail = new joint(x-50,y);
-    var tail2 = new joint(x,y+25);
-    
-    this.joints = [neck,tail,tail2];
-    
-    for(var i = 0;i<this.joints.length;i++){
-        this.joints[i].id = i;
-    }
-    
-
-    
-    neck.attached = [tail.id];
-    neck.len = [20];
-    
-    tail.attached = [tail2.id, neck.id];
-    tail.len = [20];
-    
-    tail2.attached = [tail.id];
-    tail.len = [20];
-    
-    
-
-    var p_body = new part(tail.id,neck.id);
-    var p_tail = new part(tail2.id,tail.id);
-    
-    this.parts = [p_body, p_tail];
-    
-    for(var i = 0;i<this.parts.length;i++){
-        this.parts[i].id = i;
-        this.parts[i].initSquare();
-    }
-    this.updateParts();
-    this.updateCenter();
-    
-
-};
-
-
-body.prototype.createAnt = function(x,y){
-    var head = new joint(x+50,y);
-    var neck = new joint(x,y);
-    var tail = new joint(x-50,y);
-    var tail2 = new joint(x,y+25);
-    
-    this.joints = [head,neck,tail,tail2];
-    
-    for(var i = 0;i<this.joints.length;i++){
-        this.joints[i].id = i;
-    }
-    
-    head.attached = [neck.id];
-    head.len = [10];
-    
-    neck.attached = [tail.id,head.id];
-    neck.len = [10,20];
-    
-    tail.attached = [tail2.id,neck.id];
-    tail.len = [20,20];
-    
-    tail2.attached = [tail.id];
-    tail.len = [20];
-    
-    
-    var p_head = new part(neck.id,head.id);
-    var p_body = new part(tail.id,neck.id);
-    var p_tail = new part(tail2.id,tail.id);
-    
-    this.parts = [p_head, p_body, p_tail];
-    
-    for(var i = 0;i<this.parts.length;i++){
-        this.parts[i].id = i;
-        this.parts[i].initSquare();
-    }
-    this.updateParts();
-    this.updateCenter();
-    
-
-};
-
-body.prototype.createAnt2 = function(x,y){
-    var head = new joint(x+50,y);
-    var neck = new joint(x,y);
-    var tail = new joint(x-50,y);
-    var tail2 = new joint(x+50,y+50);
-    
-    this.joints = [head,neck,tail,tail2];
-    
-    for(var i = 0;i<this.joints.length;i++){
-        this.joints[i].id = i;
-    }
-    
-    head.attached = [neck.id];
-    head.len = [10];
-    
-    neck.attached = [tail.id,head.id];
-    neck.len = [10,20];
-    
-    tail.attached = [tail2.id,neck.id];
-    tail.len = [20,20];
-    
-    tail2.attached = [tail.id];
-    tail.len = [20];
-    
-    
-    var p_head = new part(neck.id,head.id);
-    var p_body = new part(tail.id,neck.id);
-    var p_tail = new part(tail2.id,tail.id);
-    
-    this.parts = [p_head, p_body, p_tail];
-    
-    for(var i = 0;i<this.parts.length;i++){
-        this.parts[i].id = i;
-        this.parts[i].initSquare();
-    }
-    this.updateParts();
-    this.updateCenter();
-    
-
-};
 
 body.prototype.createLimbX = function(x,y){
     var j_hip = new joint(x,y);
@@ -1755,6 +1697,7 @@ game.prototype.setImobileB = function(x,y){
     this.imobileB.subBodies[0].velo.x = 0;
     this.imobileB.subBodies[0].velo.y = 0;
     this.imobileB.subBodies[0].angVelo = 0;
+    this.imobileB.subBodies[0].rest = true;
 };
 
 body.prototype.createImobileB = function(){
@@ -1788,6 +1731,8 @@ body.prototype.createImobileB = function(){
     
     sbody.mass = Infinity;
     sbody.inertia = Infinity;
+    this.subBodies[0] = sbody;
+    this.activeSBs.push(0);
     this.subBodies.push(sbody);
 };
 
