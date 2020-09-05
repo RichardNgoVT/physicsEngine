@@ -694,7 +694,6 @@ subBody.prototype.getVertexVelo = function(point){
     var veloDir = getNrmUV(this.pos, point);
     
     var radius = mag(point.x-this.pos.x,point.y-this.pos.y);
-    
     var veloMag = radius*this.angVelo;
     
     
@@ -823,6 +822,9 @@ body.prototype.relaxJoint = function(j){
     
     this.subBodies[j].velo = oldSBody.getVertexVelo(this.subBodies[j].pos);
     this.subBodies[j].angVelo = oldSBody.angVelo;
+    
+    //println(this.subBodies[oSB].partIds+'!'+this.subBodies[j].partIds);
+    //println(this.subBodies[oSB].jointIds+'?'+this.subBodies[j].jointIds);
 };
 
 body.prototype.controls = function(){
@@ -874,7 +876,7 @@ body.prototype.getKE = function(floor){
 };
 
 game.prototype.wakeUp = function(id, idSB){
-    
+    //println(id+','+idSB);
     //println(id);
     if(id<0){
         println('error in wake');
@@ -891,6 +893,7 @@ game.prototype.wakeUp = function(id, idSB){
     
     for(var i = 0; i < sbody.stableC.length; i++){
         this.wakeUp(sbody.stableC[i][0],sbody.stableC[i][1]);
+        
     }
     sbody.stableC = [];
     
@@ -981,8 +984,8 @@ game.prototype.checkAwakened = function(idw, idr, pw, pr, point, nrmDir, velo){
         sRange[1] = max(sRange[1],getCross(velo,pointS));
         
         if(idrS<0){
-        drawPoints.push(pointS);
-        drawLines.push([point, pointS]);
+        //drawPoints.push(pointS);
+        //drawLines.push([point, pointS]);
             continue;
         }
         
@@ -1004,7 +1007,7 @@ game.prototype.checkAwakened = function(idw, idr, pw, pr, point, nrmDir, velo){
         //println(idw+' '+sbodyW.id+' '+idr+' '+sbodyR.id+' '+sCheck+' '+sRange);
         //println('$ '+point+' '+velo);
         //println('$ '+sbodyW.pos);
-        //drawLines.push([point,new PVector(point.x+velo.x*50,point.y+velo.y*50)]);
+        drawLines.push([point,new PVector(point.x+velo.x*50,point.y+velo.y*50)]);
         this.wakeUp(idr, sbodyR.id); 
     }
 
@@ -1095,12 +1098,18 @@ game.prototype.setRestedSBodies = function(){
                 this.actors[i].parts[sbody.partIds[0]].color[1] = 233;
                 this.actors[i].parts[sbody.partIds[0]].color[2] = 66;
                     
+                sbody.velo.x = 0;
+                sbody.velo.y = 0;
+                sbody.angVelo.x = 0;
                     //println(i);
                 }
                 else{
                     sbody.stableS[0][2]=-1;//probably a better way to do this
                     sbody.stableS[1][2]=-1;
                     
+                    this.actors[i].parts[sbody.partIds[0]].color[0] = 230;
+                    this.actors[i].parts[sbody.partIds[0]].color[1] = 0;
+                    this.actors[i].parts[sbody.partIds[0]].color[2] = 255;
                 }
                 sbody.stableP = [];
             }
@@ -1312,7 +1321,7 @@ game.prototype.collide = function(id1, id2, contacts){
         var relVelo = new PVector(velo1.x-velo2.x,velo1.y-velo2.y);
         
         
-        
+        drawPoints.push(contact);
         if(mag(relVelo.x,relVelo.y) < 1/50){
             //drawPoints.push(contact);
             
@@ -1378,7 +1387,6 @@ game.prototype.collide = function(id1, id2, contacts){
         impulse.y = -(1+dampen*part1.bounce)*(relVelo.y)/(res1+res2);
         
         
-        
         //drawLines.push([contact,new PVector(contact.x+impulse.x,contact.y+impulse.y)]);
         
         xIpRange[0] = min(xIpRange[0], impulse.x);
@@ -1424,10 +1432,7 @@ game.prototype.collide = function(id1, id2, contacts){
         sbody2.velo.y-=(yIpRange[0]+yIpRange[1])/sbody2.mass;
         sbody2.angVelo-=turnRange2[0]+turnRange2[1];
     }
-    if(this.actors[0].activeSBs.length>1 && id1 ===0 && isNaN(this.actors[0].subBodies[2].velo.x)){
-    println('2:'+' '+this.actors[0].subBodies[2].velo);
-    println(id1+' '+id2);
-    }
+
 };
 
 
@@ -1473,6 +1478,10 @@ game.prototype.checkActvAct = function(id1, id2){
     
     for(var s1 = 0; s1 < body1.activeSBs.length; s1++){
         var sbody1 = body1.subBodies[body1.activeSBs[s1]];
+        
+        //
+        drawPoints.push(sbody1.pos);
+        //
         for(var p1 = 0; p1 < sbody1.partIds.length; p1++){
             var part1 = body1.parts[sbody1.partIds[p1]];
             
@@ -1508,6 +1517,11 @@ game.prototype.checkActvAct = function(id1, id2){
                 collided = false;
                 var contacts = [];
                 var sbody2 = body2.subBodies[body2.activeSBs[s2]];
+                
+                //
+                drawPoints.push(sbody2.pos);
+                //
+                
                 var vsRest = false;
                 if(sbody1.rest || sbody2.rest){
                     if(!sbody1.rest || !sbody2.rest){
@@ -1784,7 +1798,16 @@ game.prototype.applyCollisions2 = function(){
         
     }
     
+    if(this.actors[0].activeSBs.length>1){
+            //println('1!A0S0:'+this.actors[0].subBodies[0].rest+'A0S3:'+this.actors[0].subBodies[3].rest+'A1S0:'+this.actors[1].subBodies[0].rest+'A1S3:'+this.actors[1].subBodies[3].rest);
+
+        }
+    
     this.setAwakened();
+     if(this.actors[0].activeSBs.length>1){
+            //println('2!A0S0:'+this.actors[0].subBodies[0].rest+'A0S3:'+this.actors[0].subBodies[3].rest+'A1S0:'+this.actors[1].subBodies[0].rest+'A1S3:'+this.actors[1].subBodies[3].rest);
+
+        }
     
     
     var resCounter = 0;
@@ -1813,7 +1836,9 @@ game.prototype.applyCollisions2 = function(){
     for(var i = 0; i<this.actors.length ;i++){
         for(var s = 0; s<this.actors[i].activeSBs.length; s++){
             var sbody = this.actors[i].subBodies[this.actors[i].activeSBs[s]];
-
+            if(sbody.rest){
+                continue;
+            }
             sbody.pos.x+=this.actors[i].penetrate.x/max(1,this.actors[i].conCount);
             sbody.pos.y+=this.actors[i].penetrate.y/max(1,this.actors[i].conCount);
 
