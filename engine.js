@@ -216,20 +216,20 @@ var part = function(x, y){
     this.kF = 0.1;//kinetic friction
     this.bounce = 0.1;
     this.width = 10;//length is from base part to tipPart
-    this.maxAngVelo = PI/69;//PI/69
-    
+    this.goalAngVelo = 0;//PI/69
+    this.torqueMax = 2000;//max torque that can be supplied
     //status
     this.vertexs = new pointStorage();//corners of part
     this.pos = new PVector(0, 0);//center of part
     this.turning = false;
-    this.torque = 0;
+    this.torqueSup = 0;
     this.state = 0;
     
 };
 
 
 
-var subBody= function(){
+var subBody = function(){
     this.id = 0;
     
     this.ownerId = 0;
@@ -248,6 +248,8 @@ var subBody= function(){
     this.angVelo = 0;
     
     this.inertia = 0;
+    
+    this.ghInertia = 0;//easier collisions
     
     this.mass = 0;//mass of all contained parts
     
@@ -489,7 +491,7 @@ body.prototype.getMass = function(sbody){
 
 body.prototype.getInertia = function(sbody){
     var inertia = 0;
-    
+    var ghostInertia = 0;
     for(var i = 0; i < sbody.partIds.length;i++){
         if(this.getSPart(sbody,i).tipPart<0){
             continue;
@@ -499,9 +501,13 @@ body.prototype.getInertia = function(sbody){
             var cenLen = mag(vertexs.getPoint(j).x-sbody.com.x,vertexs.getPoint(j).y-sbody.com.y);
            
             inertia += this.getSPart(sbody,i).massPerVertex*cenLen*cenLen;
-        }
+            
+            var jointPos = this.parts[sbody.id].basePos;
+            var ghCenLen = mag(vertexs.getPoint(j).x-jointPos.x,vertexs.getPoint(j).y-jointPos.y);
+            ghostInertia += this.getSPart(sbody,i).massPerVertex*ghCenLen*ghCenLen;
+        }   
     }
-    return inertia;
+    return [inertia,ghostInertia];
 };
 
 //whenever limbs lost or rotated
@@ -515,7 +521,9 @@ body.prototype.updateShape = function(){
             var massResults = this.getMass(sbody);
             sbody.com = massResults[0];
             sbody.mass = massResults[1];
-            sbody.inertia = this.getInertia(sbody);
+            var inertiaResults = this.getInertia(sbody);
+            sbody.inertia = inertiaResults[0];
+            sbody.ghInertia = inertiaResults[1];
             this.mass+=sbody.mass;
             this.inertia+=sbody.inertial;
             if(sbody.inertia>0){
@@ -726,8 +734,8 @@ body.prototype.controls = function(){
     var turnVelo = PI/69;
     if(keys[2]){//q
     
-        this.parts[2].turning = true;
-        this.parts[2].torque = -20;
+        this.parts[3].turning = true;
+        //this.parts[2].goalAngVelo = -PI/69;
         
         
     }
@@ -1221,7 +1229,8 @@ var getImpulse = function(sbody1, sbody2, contact, nrmDir, relVelo, properties){
     }
     else{
         var veloCheck = getDot(relVelo, nrmDir);
-        if(veloCheck>0){
+        if(veloCheck>0 && false){
+            println('hi');
             relVelo.x-=nrmDir.x*veloCheck;
             relVelo.y-=nrmDir.y*veloCheck;
         }
@@ -1231,7 +1240,11 @@ var getImpulse = function(sbody1, sbody2, contact, nrmDir, relVelo, properties){
         }
     }
     
+    var com1;
+    var com2;
     
+    var inertia1;
+    var inertia2;
     
     var relContact1;
     var relContact2;
@@ -1241,37 +1254,51 @@ var getImpulse = function(sbody1, sbody2, contact, nrmDir, relVelo, properties){
     
     var veloDir = getUV(relVelo);
     
-    var turnable = properties[1];
     
-    var inertia1 = sbody1.inertia;
-    if(!turnable[0]){
-        var inertia1 = Infinity;
+    var constrained = properties[1];
+    var basePos = properties[2];
+    
+    if(!constrained[0]){
+        inertia1 = sbody1.inertia;
+        com1 = sbody1.com;
+    }else{
+        inertia1 = sbody1.ghInertia;
+        com1 = basePos[0];
     }
     
-    var inertia2 = sbody2.inertia;
-    if(!turnable[1]){
-        var inertia2 = Infinity;
+    if(!constrained[1]){
+        inertia2 = sbody2.inertia;
+        com2 = sbody2.com;
+    }else{
+        inertia2 = sbody2.ghInertia;
+        com2 = basePos[1];
     }
+    
     
     if(sbody1.rest){
         res1 = 0;
     }
     else{
-        var relContact1 = new PVector(contact.x-sbody1.com.x,contact.y-sbody1.com.y);
+        var relContact1 = new PVector(contact.x-com1.x,contact.y-com1.y);
         var turnDir1 = getCross(relContact1,veloDir);
-        res1 = 1/sbody1.mass + (turnDir1*turnDir1)/sbody1.inertia;
+        res1 = 1/sbody1.mass + (turnDir1*turnDir1)/inertia1;
     }
     
     if(sbody2.rest){
         res2 = 0;
     }
     else{
-        var relContact2 = new PVector(contact.x-sbody2.com.x,contact.y-sbody2.com.y);
+        var relContact2 = new PVector(contact.x-com2.x,contact.y-com2.y);
         var turnDir2 = getCross(relContact2,veloDir);
-        res2 = 1/sbody2.mass + (turnDir2*turnDir2)/sbody2.inertia;
+        res2 = 1/sbody2.mass + (turnDir2*turnDir2)/inertia2;
     }
     
     var impulse = new PVector(0,0);
+    
+    if(res1 === 0 && res2 === 0){
+        println('error, double rest collision');
+        return impulse;
+    }
     
     var bounce = properties[0];
     impulse.x = -(1+bounce)*(relVelo.x)/(res1+res2);
@@ -1280,7 +1307,7 @@ var getImpulse = function(sbody1, sbody2, contact, nrmDir, relVelo, properties){
     return impulse;
 };
 
-
+//Retired
 body.prototype.getImpactContributions = function(p,contact){
     var part = this.parts[p];
     var sbody = this.subBodies[part.id];
@@ -1324,6 +1351,37 @@ body.prototype.getImpactContributions = function(p,contact){
     return impactContr;
 };
 
+body.prototype.getVelocityContributions = function(p,contact){
+    var part = this.parts[p];
+    var sbody = this.subBodies[part.id];
+
+    var totalVelo = new PVector(0,0);
+    while(true){
+        if(part.turning){
+            
+            var veloDir = getNrmUV(part.basePos, contact);
+    
+            var radius = mag(contact.x-part.basePos.x,contact.y-part.basePos.y);
+            
+            var veloMag = radius*sbody.angVelo;
+            
+            totalVelo.x += veloDir.x*veloMag;
+            totalVelo.y += veloDir.y*veloMag;
+
+        }
+        if(sbody.id === this.originP){
+            
+            var velo = sbody.getVertexVelo(contact);
+            totalVelo = addPVectors(totalVelo,velo);
+            return totalVelo;
+
+        }
+        var part = this.parts[part.basePart];
+        var sbody = this.subBodies[part.id];
+    }
+    
+    
+};
 
 
 game.prototype.collide = function(id1, id2, contacts){
@@ -1393,51 +1451,76 @@ game.prototype.collide = function(id1, id2, contacts){
         var part1 = body1.parts[p1];
         var part2 = body2.parts[p2];
         
-        var properties = [part1.bounce*dampen, [true,true]];
+        //for the sake of easier, refine later
+        var properties = [part1.bounce*dampen, [false,false], [part1.basePos,part2.basePos]];
         
         var velo1;
         var velo2;
         
         if(sbody1.rest){
-            velo1 = [[body1.originP,new PVector(0,0)]];
+            velo1 = PVector(0,0);
         }else{
-            
-            velo1 = body1.getImpactContributions(part1.id,contact);
-            
-            
+            velo1 = body1.getVelocityContributions(part1.id,contact);
         }
         
         if(sbody2.rest){
-            velo2 = [[body2.originP,new PVector(0,0)]];
+            velo2 = new PVector(0,0);
         }else{
-            velo2 = body2.getImpactContributions(part2.id,contact);
+            velo2 = body2.getVelocityContributions(part2.id,contact);
         }
-        
-        //printout(velo1,velo2);
-        
-        var impulse = new PVector(0,0);
-        
-        var sumVelo = new PVector(0,0);//testing
-        
-        for(var v1 = 0; v1 < velo1.length; v1++){
-            for(var v2 = 0; v2 < velo2.length; v2++){
-                
-                var sbodyC1 = body1.subBodies[velo1[v1][0]];
-                var sbodyC2 = body2.subBodies[velo2[v2][0]];
-                var relVelo = subPVectors(velo1[v1][1],velo2[v2][1]);
-                
-                sumVelo = addPVectors(relVelo,sumVelo);
-                
-                properties[1] = [(sbodyC1.id === body1.originP),(sbodyC2.id === body2.originP)];
 
-                var imResults = getImpulse(sbodyC1,sbodyC2,contact,nrmDir,relVelo,properties);
-                impulse = addPVectors(impulse,imResults);
-            }
+        var relVelo = subPVectors(velo1,velo2);
+        
+        if(getDot(relVelo,nrmDir)>0){
+            return;
         }
         
-        //
-        //impulse = getImpulse(sbody1,sbody2,contact,nrmDir,sumVelo,properties);
-        //
+        if(part1.turning){//replace with (if not origin part) eventually
+
+            var passDir = normalize(subPVectors(part1.basePos,contact));
+            var passVelo = multPVector(passDir,getDot(relVelo,passDir));
+            var turnVelo = subPVectors(relVelo,passVelo);
+            
+            var sbodyT1 = body1.subBodies[part1.id];
+            
+            properties[1] = [true,false];
+
+            var impulse = getImpulse(sbodyT1,sbody2,contact,nrmDir,turnVelo,properties);
+
+            var relContact1 = new PVector(contact.x-part1.basePos.x,contact.y-part1.basePos.y);
+            
+            var angOffset = getCross(relContact1,impulse)/sbodyT1.ghInertia;
+            
+            var radiusOSB = mag(sbodyT1.outerSB.com.x-part1.basePos.x,sbodyT1.outerSB.com.y-part1.basePos.y);
+            
+            var torqueReq = angOffset/(1/sbodyT1.outerSB.mass/radiusOSB/radiusOSB);
+            
+            //println(torqueReq);
+            var stiffness = min(part1.torqueSup/abs(torqueReq),1);
+            
+            turnVelo = multPVector(turnVelo,stiffness);
+            
+            passVelo = addPVectors(turnVelo,passVelo);
+            
+            if(part1.torqueSup === part1.torqueMax){
+                //println('new');
+            }
+            
+            //println(torqueReq+' '+stiffness);
+            
+            part1.torqueSup -= min(abs(torqueReq),part1.torqueSup);
+
+            sbodyT1.angVelo+=angOffset*(1-stiffness);
+            
+            
+            //figure out how to transfer linear impulse to main later
+            
+            relVelo = passVelo;
+
+        }
+        
+        properties[1] = [false,false];
+        var impulse = getImpulse(sbody1,sbody2,contact,nrmDir,relVelo,properties);
         
         var angChange1 = 0;
         if(!sbody1.rest){
@@ -1451,6 +1534,7 @@ game.prototype.collide = function(id1, id2, contacts){
         }
         
         //drawLines.push([contact,new PVector(contact.x+impulse.x,contact.y+impulse.y)]);
+        
         
         xIpRange[0] = min(xIpRange[0], impulse.x);
         xIpRange[1] = max(xIpRange[1], impulse.x);
@@ -1956,16 +2040,19 @@ game.prototype.checkActvAct = function(id1, id2){
                         yPenRange[0] = min(yPenRange[0], con_nrmDir.y*minPen);
                         yPenRange[1] = max(yPenRange[1], con_nrmDir.y*minPen);
                         
-                        
+                        var DEV_posSum = new PVector(0,0);
+                        var DEV_countSum = 0;
                         for(var i = 0; i<penVertexs.length; i++){
                             if(checkBounded(penVertexs.getPoint(i), edgeVertexs)){
                                 
-                                contacts.push([part1.id,part2.id,penVertexs.getPoint(i),con_nrmDir]);                 
-                                //drawPoints.push(penVertexs.getPoint(i));
-                                //println('here'+' '+contacts);
+                                //contacts.push([part1.id,part2.id,penVertexs.getPoint(i),con_nrmDir]);                 //^old
+                                DEV_posSum = addPVectors(DEV_posSum,penVertexs.getPoint(i));
+                                DEV_countSum+=1;
+                                
                             }
                         }
-                            
+                        DEV_posSum = multPVector(DEV_posSum,1/DEV_countSum);
+                        contacts.push([part1.id,part2.id,DEV_posSum,con_nrmDir]);
            
                     }
                     
@@ -2021,6 +2108,8 @@ game.prototype.checkActvFloor = function(id){
             if(part.tipPart<0){
                 continue;
             }
+            var DEV_posSum = new PVector(0,0);
+            var DEV_countSum = 0;
             for(var v = 0; v < part.vertexs.length; v++){
                 if(part.vertexs.getPoint(v).y>this.floor){
                     if(part.vertexs.getPoint(v).y>maxPenetrate){
@@ -2028,8 +2117,18 @@ game.prototype.checkActvFloor = function(id){
                        //this.actors[id].penetrate.y=(this.floor-maxPenetrate+this.actors[id].velo.y);
                     }
                     collided = true;
-                    contacts.push([part.id,0,part.vertexs.getPoint(v),nrmDir]);
+                    
+                    //contacts.push([part.id,0,part.vertexs.getPoint(v),nrmDir]);
+                    //^old
+                    
+                    DEV_posSum = addPVectors(DEV_posSum,part.vertexs.getPoint(v));
+                    DEV_countSum+=1;
+                    
                 }
+            }
+            if(DEV_countSum>0){
+                DEV_posSum = multPVector(DEV_posSum,1/DEV_countSum);
+                contacts.push([part.id,0,DEV_posSum,nrmDir]);
             }
         }
         if(collided){
@@ -2062,6 +2161,7 @@ game.prototype.applyCollisions = function(){
     }
     
     this.setAwakened();
+    
     
     var resCounter = 0;
     this.global_Collision = true;
@@ -2232,6 +2332,7 @@ body.prototype.applyTurns = function(){
     for(var i = 0; i < this.parts.length; i++){
         var part = this.parts[i];
         if(part.turning && this.subBodies[part.id].angVelo !== 0){
+            //printout(this.subBodies[part.id].angVelo);
             this.bendJoints(part.id,part.id);
             turnExists = true;
         }
@@ -2255,55 +2356,57 @@ body.prototype.activateTurns = function(){
             var massResults = this.getMass(sbody);
             sbody.com = massResults[0];
             sbody.mass = massResults[1];
-            sbody.inertia = this.getInertia(sbody);
+            var inertiaResults = this.getInertia(sbody);
+            sbody.inertia = inertiaResults[0];
+            sbody.ghInertia = inertiaResults[1];
             
             
             var outerSB = sbody.outerSB;
             var massResults = this.getMass(outerSB);
             outerSB.com = massResults[0];
             outerSB.mass = massResults[1];
-            outerSB.inertia = this.getInertia(outerSB);
+            var inertiaResults = this.getInertia(outerSB);
+            outerSB.inertia = inertiaResults[0];
+            outerSB.ghInertia = inertiaResults[1];
             
-            
-            //apply torque
-            var radius = mag(sbody.com.x-part.basePos.x,sbody.com.y-part.basePos.y);
             var veloDir = getNrmUV(part.basePos,sbody.com);
-            
-            if(abs(sbody.angVelo)<part.maxAngVelo){
-                var veloT = (part.torque/radius)/sbody.mass;//linear acceleration
+            var radius = mag(sbody.com.x-part.basePos.x,sbody.com.y-part.basePos.y);
+            if(sbody.angVelo !== part.goalAngVelo){
+                //apply torque
                 
-                sbody.angVelo += veloT/radius;//angular acceleration
-                //sbody.velo = multPVector(veloDir,sbody.angVelo*radius);
-    
                 var radiusOSB = mag(outerSB.com.x-part.basePos.x,outerSB.com.y-part.basePos.y);
-                var veloDirOSB = getNrmUV(part.basePos,outerSB.com);
-                var veloTOSB = (-part.torque/radiusOSB)/outerSB.mass;
                 
-                outerSB.angVelo = veloTOSB/radiusOSB;
-                outerSB.velo = multPVector(veloDirOSB,veloTOSB);
+                var torqueReq = 2*(part.goalAngVelo-sbody.angVelo)/(1/sbody.mass/radius/radius+1/outerSB.mass/radiusOSB/radiusOSB);
                 
-    
-                //align originSB with outerSB
-                originSB.velo = addPVectors(originSB.velo, outerSB.getVertexVelo(originSB.com));
-                originSB.angVelo += outerSB.angVelo;
+                var torqueUse = min(part.torqueSup,abs(torqueReq));
                 
-                //originSB.velo = addPVectors(originSB.velo, outerSB.velo);
-                //originSB.angVelo += outerSB.angVelo;
+                if(torqueReq<0){
+                    torqueUse*=-1;
+                }
                 
-                
-                //set turning SB relative to origin SB
-                sbody.angCompensate = -outerSB.angVelo; //might not be needed
-                sbody.angVelo -= outerSB.angVelo;
-                
-                
-            
+                if(abs(torqueUse)>0){
+                    sbody.angVelo += torqueUse/2/sbody.mass/radius/radius;
+                    
+                    outerSB.angVelo += -torqueUse/2/outerSB.mass/radiusOSB/radiusOSB;
+                    
+                    //align originSB with outerSB
+                    var origVeloDir = getNrmUV(part.basePos,originSB.com);
+                    
+                    var origVelo = multPVector(origVeloDir,outerSB.angVelo*mag(originSB.com.x-part.basePos.x,originSB.com.y-part.basePos.y));
+                    
+                    originSB.velo = addPVectors(originSB.velo, origVelo);
+                    originSB.angVelo += outerSB.angVelo;
+                    
+                    //set turning SB relative to origin SB
+                    sbody.angVelo -= outerSB.angVelo;
+                    
+                }
             }
-            drawPoints.push(originSB.com);
-            //println(originSB.com);
-            drawLines.push([originSB.com,addPVectors(originSB.com,originSB.velo)]);
-            sbody.velo = multPVector(veloDir,sbody.angVelo*radius);
+            //drawPoints.push(originSB.com);
+            //drawLines.push([originSB.com,addPVectors(originSB.com,originSB.velo)]);
             
         }
+        part.torqueSup = part.torqueMax;
         
     }
 };
@@ -2543,8 +2646,8 @@ game.prototype.initGame = function(){
 
     var limb = new body();
     limb.id = 0;
-    limb.createLimbY(200,100);
-    //limb.subBodies[0].velo.x = 1;
+    limb.createLimbY(100,100);
+    limb.subBodies[0].velo.x = 1;
     
     
     var limb2 = new body();
@@ -2553,7 +2656,7 @@ game.prototype.initGame = function(){
     
     
     this.actors[0] = limb;
-    this.actors[1] = limb2;
+    //this.actors[1] = limb2;
     
 
 };
