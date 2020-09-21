@@ -374,8 +374,13 @@ var getBounds = function(vertexs, nrmDir){
     var max = -Infinity;
     var minI = 0;
     var maxI = 0;
+    
+    if(vertexs.type === 'PS'){
+        var vertexs = vertexs.getArray();
+    }
+    
     for(var v = 0; v < vertexs.length; v++){
-        var bound = getDot(nrmDir,vertexs.getPoint(v));
+        var bound = getDot(nrmDir,vertexs[v]);
         if(bound<min){
             min = bound;
             minI = v;
@@ -385,7 +390,6 @@ var getBounds = function(vertexs, nrmDir){
             maxI = v;
         }
     }
-    
     return [[min,max],[minI,maxI]];
     
 };
@@ -735,21 +739,28 @@ body.prototype.controls = function(){
     if(keys[2]){//q
     
         this.parts[3].turning = true;
-        //this.parts[2].goalAngVelo = -PI/69;
+        this.parts[3].goalAngVelo = -PI/69;
+        this.parts[3].torqueMax = 2000;
         
         
     }
     else if(keys[3]){//w
-
+        this.parts[3].turning = true;
+        this.parts[3].goalAngVelo = PI/69;
+        this.parts[3].torqueMax = 2000;
     }
     else{
 
     }
     if(keys[4]){//a
-
+        this.parts[3].turning = true;
+        this.parts[3].goalAngVelo = 0;
+        this.parts[3].torqueMax = 2000;
     }
     else if(keys[5]){//s
-
+        this.parts[3].turning = true;
+        this.parts[3].goalAngVelo = 0;
+        this.parts[3].torqueMax = 0;
     }
     else{
         
@@ -1221,27 +1232,13 @@ var getImpulse = function(sbody1, sbody2, contact, nrmDir, relVelo, properties){
     }
     
     
-    if(nrmDir.x === 0 && nrmDir.y === 0){
-        if(mag(relVelo.x,relVelo.y) > 5/60){
-            this.global_Collision = true;
-            //resolved = false;
-        }
-    }
-    else{
-        var veloCheck = getDot(relVelo, nrmDir);
-        if(veloCheck>0 && false){
-            println('hi');
-            relVelo.x-=nrmDir.x*veloCheck;
-            relVelo.y-=nrmDir.y*veloCheck;
-        }
-        else{
-            this.global_Collision = true;
-            //resolved = false;
-        }
-    }
+    
     
     var com1;
     var com2;
+    
+    var mass1;
+    var mass2;
     
     var inertia1;
     var inertia2;
@@ -1259,17 +1256,21 @@ var getImpulse = function(sbody1, sbody2, contact, nrmDir, relVelo, properties){
     var basePos = properties[2];
     
     if(!constrained[0]){
+        mass1 = sbody1.mass;
         inertia1 = sbody1.inertia;
         com1 = sbody1.com;
     }else{
+        mass1 = Infinity;
         inertia1 = sbody1.ghInertia;
         com1 = basePos[0];
     }
     
     if(!constrained[1]){
+        mass2 = sbody2.mass;
         inertia2 = sbody2.inertia;
         com2 = sbody2.com;
     }else{
+        mass2 = Infinity;
         inertia2 = sbody2.ghInertia;
         com2 = basePos[1];
     }
@@ -1281,7 +1282,7 @@ var getImpulse = function(sbody1, sbody2, contact, nrmDir, relVelo, properties){
     else{
         var relContact1 = new PVector(contact.x-com1.x,contact.y-com1.y);
         var turnDir1 = getCross(relContact1,veloDir);
-        res1 = 1/sbody1.mass + (turnDir1*turnDir1)/inertia1;
+        res1 = 1/mass1 + (turnDir1*turnDir1)/inertia1;
     }
     
     if(sbody2.rest){
@@ -1290,13 +1291,14 @@ var getImpulse = function(sbody1, sbody2, contact, nrmDir, relVelo, properties){
     else{
         var relContact2 = new PVector(contact.x-com2.x,contact.y-com2.y);
         var turnDir2 = getCross(relContact2,veloDir);
-        res2 = 1/sbody2.mass + (turnDir2*turnDir2)/inertia2;
+        res2 = 1/mass2 + (turnDir2*turnDir2)/inertia2;
     }
     
     var impulse = new PVector(0,0);
     
     if(res1 === 0 && res2 === 0){
-        println('error, double rest collision');
+        var relContact1 = new PVector(contact.x-com1.x,contact.y-com1.y);
+        var turnDir1 = getCross(relContact1,veloDir);
         return impulse;
     }
     
@@ -1471,31 +1473,56 @@ game.prototype.collide = function(id1, id2, contacts){
 
         var relVelo = subPVectors(velo1,velo2);
         
-        if(getDot(relVelo,nrmDir)>0){
-            return;
+        
+        if(nrmDir.x === 0 && nrmDir.y === 0){
+            if(mag(relVelo.x,relVelo.y) > 5/60){
+                this.global_Collision = true;
+                //resolved = false;
+                
+            }
+        }
+        else{
+            var veloCheck = getDot(relVelo, nrmDir);
+            if(veloCheck>0){
+                relVelo.x-=nrmDir.x*veloCheck;
+                relVelo.y-=nrmDir.y*veloCheck;
+                //return;
+            }
+            else{
+                this.global_Collision = true;
+            }
         }
         
-        if(part1.turning){//replace with (if not origin part) eventually
+        //drawLines.push([contact,addPVectors(contact,multPVector(relVelo,1000))]);
+        
+        if(part1.turning&&getDot(relVelo, nrmDir)<=0){//replace with (if not origin part) eventually
 
-            var passDir = normalize(subPVectors(part1.basePos,contact));
+            var passDir = normalize(subPVectors(contact,part1.basePos));
             var passVelo = multPVector(passDir,getDot(relVelo,passDir));
             var turnVelo = subPVectors(relVelo,passVelo);
-            
+
             var sbodyT1 = body1.subBodies[part1.id];
             
             properties[1] = [true,false];
+            
+            //var spot1 = new PVector(100,100);
+            //var spot2 = new PVector(300,100);
+ 
+            //drawLines.push([spot1,addPVectors(spot1,multPVector(turnVelo,1000))]);
+            //drawLines.push([spot2,addPVectors(spot2,multPVector(passVelo,1000))]);
 
             var impulse = getImpulse(sbodyT1,sbody2,contact,nrmDir,turnVelo,properties);
 
+            
             var relContact1 = new PVector(contact.x-part1.basePos.x,contact.y-part1.basePos.y);
             
             var angOffset = getCross(relContact1,impulse)/sbodyT1.ghInertia;
+
             
             var radiusOSB = mag(sbodyT1.outerSB.com.x-part1.basePos.x,sbodyT1.outerSB.com.y-part1.basePos.y);
             
             var torqueReq = angOffset/(1/sbodyT1.outerSB.mass/radiusOSB/radiusOSB);
             
-            //println(torqueReq);
             var stiffness = min(part1.torqueSup/abs(torqueReq),1);
             
             turnVelo = multPVector(turnVelo,stiffness);
@@ -1542,6 +1569,9 @@ game.prototype.collide = function(id1, id2, contacts){
         yIpRange[0] = min(yIpRange[0], impulse.y);
         yIpRange[1] = max(yIpRange[1], impulse.y);
         
+        
+        
+        
         if(!sbody1.rest){
             turnRange1[0] = min(turnRange1[0], angChange1);
             turnRange1[1] = max(turnRange1[1], angChange1);
@@ -1557,6 +1587,7 @@ game.prototype.collide = function(id1, id2, contacts){
     
     
     if(!sbody1.rest){
+        //drawLines.push([sbody1.com,addPVectors(sbody1.com,multPVector(new PVector(xIpRange[0]+xIpRange[1],yIpRange[0]+yIpRange[1]),1000))]);
         sbody1.velo.x+=(xIpRange[0]+xIpRange[1])/sbody1.mass;
         sbody1.velo.y+=(yIpRange[0]+yIpRange[1])/sbody1.mass;
         sbody1.angVelo+=turnRange1[0]+turnRange1[1];
@@ -1789,6 +1820,338 @@ game.prototype.collideBup = function(id1, id2, contacts){
 //speed: save all bounds for own normals
 
 game.prototype.checkActvAct = function(id1, id2){
+    
+    var body1 = this.actors[id1];
+
+    
+    var body2 = this.actors[id2];
+
+    
+    var contacts = [];
+    
+    var simple1 = 1;
+    var simple2 = 1;
+    
+    var nrmDirs1 = [];//might not be nessesary depending on algorithm
+    var bounds11 = [];
+    var bounds12 = [];
+    var boundsI11 = [];
+    var boundsI12 = [];
+    
+    var skipEdges1;
+    
+    
+    var nrmDirs2 = [];
+    var bounds21 = [];
+    var bounds22 = [];
+    var boundsI21 = [];
+    var boundsI22 = [];
+    
+    var xPenRange = [0,0];
+    var yPenRange = [0,0];
+    
+    var collided = false;
+    
+    
+    for(var s1 = 0; s1 < body1.activeSBs.length; s1++){
+        var sbody1 = body1.subBodies[body1.activeSBs[s1]];
+        
+        for(var p1 = 0; p1 < sbody1.partIds.length; p1++){
+            var part1 = body1.parts[sbody1.partIds[p1]];
+            if(part1.tipPart<0){
+                continue;
+            }
+            var vertexs1 = part1.vertexs;
+            
+            if(vertexs1.length%2===0){
+                simple1 = 2;
+            }
+            else{
+                simple1 = 1;
+            }
+            
+            var nrmDirs1 = [];
+            
+    
+            for(var v1 = 0; v1 < vertexs1.length/simple1; v1++){
+                
+                
+                
+                nrmDirs1.push(getNrmUV(vertexs1.getPoint(v1),vertexs1.getPoint((v1+1)%vertexs1.length)));
+            }
+            
+            //for rectangles only... doesn't work with current method of checking no collision, may update later
+            var tipVertexs1;
+            if(part1.id === body1.originP || true){
+                tipVertexs1 = vertexs1.getArray();
+            }else{
+                tipVertexs1 = [vertexs1.getPoint(2),vertexs1.getPoint(3)];
+            }
+
+            for(var n1 = 0; n1<nrmDirs1.length; n1++){
+                
+                var holder = getBounds(vertexs1,nrmDirs1[n1]);
+                bounds11[n1]=holder[0];
+                boundsI11[n1]=holder[1];
+            }
+            
+            
+            
+            for(var s2 = 0; s2 < body2.activeSBs.length; s2++){
+                collided = false;
+                var contacts = [];
+                var sbody2 = body2.subBodies[body2.activeSBs[s2]];
+                
+                //
+                drawPoints.push(sbody2.com);
+                //
+                
+                var vsRest = false;
+                if(sbody1.rest || sbody2.rest){
+                    if(!sbody1.rest || !sbody2.rest){
+                        vsRest = true;
+                    }
+                    else
+                    {
+                        continue;
+                    }
+                }
+
+                
+                
+                for(var p2 = 0; p2 < sbody2.partIds.length; p2++){
+                    var part2 = body2.parts[sbody2.partIds[p2]];
+                    if(part2.tipPart<0){
+                        continue;
+                    }
+                    var vertexs2 = part2.vertexs;
+                    if(vertexs2.length%2===0){
+                        simple2 = 2;
+                    }
+                    else{
+                        simple2 = 1;
+                    }
+                    var nrmDirs2 = [];
+                    for(var v2 = 0; v2 < vertexs2.length/simple2; v2++){
+                        nrmDirs2.push(getNrmUV(vertexs2.getPoint(v2),vertexs2.getPoint((v2+1)%vertexs2.length)));
+                    }
+                    
+                    
+                    var tipVertexs2;
+                    if(part2.id === body2.originP || true){
+                        tipVertexs2 = vertexs2.getArray();
+                    }
+                    else{
+                        tipVertexs2 = [vertexs2.getPoint(2),vertexs2.getPoint(3)];
+                    }
+                    
+                    
+                    for(var n1 = 0; n1<nrmDirs1.length; n1++){
+                        var holder = getBounds(tipVertexs2,nrmDirs1[n1]);
+                        bounds12[n1]=holder[0];
+                        boundsI12[n1]=holder[1];
+                    }
+                    
+                    
+                    for(var n2 = 0; n2<nrmDirs2.length; n2++){
+                        //for squares, only get bounds of tip vertex points for less empty checks
+                        var holder = getBounds(tipVertexs1,nrmDirs2[n2]);
+                        bounds21[n2] = holder[0];
+                        boundsI21[n2] = holder[1];
+                        
+                        var holder = getBounds(vertexs2,nrmDirs2[n2]);
+                        bounds22[n2] = holder[0];
+                        boundsI22[n2] = holder[1];
+                    }
+        
+                    
+                    var collision = true;
+                    var pener = 0;
+                    var penI;
+                    var minPen = Infinity;
+                    var con_nrmDir = new PVector(0,0);
+                    //var edgeGuess = 0;
+                    
+                    
+                   
+                    for(var b = 0; b<nrmDirs1.length; b++){
+                        if(bounds11[b][0]>bounds12[b][1] || bounds11[b][1]<bounds12[b][0]){
+                            collision = false;
+                            break;
+                        }
+                        else{
+                            if(minPen>bounds11[b][1]-bounds12[b][0]){
+                                //side correctly chosen
+                                //store min of 2
+                                
+                                
+                                
+                                    //outdated if more complex shape and joints, change to blacklist method
+                                    pener = 2;
+                                    penI = boundsI12[b][0];
+                                    minPen = bounds11[b][1]-bounds12[b][0];
+                                    con_nrmDir.x = nrmDirs1[b].x;
+                                    con_nrmDir.y = nrmDirs1[b].y;
+                                
+                            }
+                            
+                            if(minPen>bounds12[b][1]-bounds11[b][0]){
+                                //get opposite side
+                                //store max of 2
+                                //if(vertexs1.length%2===0){//parallel
+                                
+                                pener = 2;
+                                penI = boundsI12[b][1];
+                                minPen = bounds12[b][1]-bounds11[b][0];
+                                con_nrmDir.x = nrmDirs1[b].x;
+                                con_nrmDir.y = nrmDirs1[b].y;
+                                con_nrmDir.x*=-1;
+                                con_nrmDir.y*=-1;
+                                //}
+                                
+                                
+                            }
+                        }
+                            
+                    }
+                    
+                    if(!collision){
+                        continue;
+                    }
+        
+                    
+                    for(var b = 0; b<nrmDirs2.length; b++){
+                        if(bounds21[b][0]>bounds22[b][1] || bounds21[b][1]<bounds22[b][0]){
+                            collision = false;
+                            break;
+                        }
+                        else{
+                            if(minPen>bounds22[b][1]-bounds21[b][0]){
+                                //side correctly chosen
+                                //store min of 1
+                                
+                                    
+                                    pener = 1;
+                                    penI = boundsI21[b][0];
+                                    minPen = bounds22[b][1]-bounds21[b][0];
+                                    con_nrmDir.x = nrmDirs2[b].x;
+                                    con_nrmDir.y = nrmDirs2[b].y;
+                                    
+                            }
+                            
+                            if(minPen>bounds21[b][1]-bounds22[b][0]){
+                                //get opposite side
+                                //store max of 1
+                                
+                                //if(vertexs2.length%2===0){//parallel
+                                
+                                pener = 1;
+                                penI = boundsI21[b][1];
+                                minPen = bounds21[b][1]-bounds22[b][0];
+                                con_nrmDir.x = nrmDirs2[b].x;
+                                con_nrmDir.y = nrmDirs2[b].y;
+                                con_nrmDir.x*=-1;
+                                con_nrmDir.y*=-1;
+                                
+                                //}
+                                
+                                
+                            }
+                            
+                        }
+                    }
+                    
+                    if(collision){
+                        var penPart;
+                        var penVertexs;
+                        var edgeVertexs;
+                        var penBody;
+                        
+                        
+                        if(pener === 1){
+                            penPart = part1;
+                            penVertexs = vertexs1;
+                            
+                            edgeVertexs = vertexs2;
+                            
+                            penBody = body1;
+        
+                        }
+                        else{
+                            penPart = part2;
+                            penVertexs = vertexs2;
+                            
+                            con_nrmDir.x*=-1;
+                            con_nrmDir.y*=-1;
+                            edgeVertexs = vertexs1;
+                            
+                            penBody = body2;
+                        }
+        
+                        xPenRange[0] = min(xPenRange[0], con_nrmDir.x*minPen);
+                        xPenRange[1] = max(xPenRange[1], con_nrmDir.x*minPen);
+                        
+                        yPenRange[0] = min(yPenRange[0], con_nrmDir.y*minPen);
+                        yPenRange[1] = max(yPenRange[1], con_nrmDir.y*minPen);
+                        
+                        var DEV_posSum = new PVector(0,0);
+                        var DEV_countSum = 0;
+                        
+                        var DEV_tipIds;
+                        
+                        //println([penPart.id,penBody.originP]);
+                        if(penPart.id === penBody.originP){//hardcoded for rectangles
+                            DEV_tipIds = [0,1,2,3];
+                        }else{
+                            DEV_tipIds = [2,3];
+                        }
+                        
+                        for(var i = 0; i<DEV_tipIds.length; i++){
+                            if(checkBounded(penVertexs.getPoint(DEV_tipIds[i]), edgeVertexs)){
+                                
+                                //contacts.push([part1.id,part2.id,penVertexs.getPoint(i),con_nrmDir]);                 //^old
+                                DEV_posSum = addPVectors(DEV_posSum,penVertexs.getPoint(DEV_tipIds[i]));
+                                DEV_countSum+=1;
+                                
+                            }
+                        }
+                        if(DEV_countSum>0){
+                            collided = true;
+                            DEV_posSum = multPVector(DEV_posSum,1/DEV_countSum);
+                            contacts.push([part1.id,part2.id,DEV_posSum,con_nrmDir]);
+                        }
+           
+                    }
+                    
+                }
+                if(collided){
+                    if(vsRest){
+                        this.contactsvR.push([id1,id2,contacts]);
+                    }
+                    else
+                    {
+                        this.contacts.push([id1,id2,contacts]);
+                    }
+                }
+            }
+        }
+    }
+    if((xPenRange[0]+xPenRange[1]) !== 0 || (yPenRange[0]+yPenRange[1]) !== 0){
+        var totalMass = body1.mass+body2.mass;
+        var partialPen = 0.3;
+        body1.penetrate.x+=(xPenRange[0]+xPenRange[1])*partialPen*body1.mass/totalMass;
+        body1.penetrate.y+=(yPenRange[0]+yPenRange[1])*partialPen*body1.mass/totalMass;
+        body1.conCount+=1;
+        
+        body2.penetrate.x-=(xPenRange[0]+xPenRange[1])*partialPen*body2.mass/totalMass;
+        body2.penetrate.y-=(yPenRange[0]+yPenRange[1])*partialPen*body2.mass/totalMass;
+        body2.conCount+=1;
+    }
+    
+    
+};
+
+game.prototype.checkActvActBup = function(id1, id2){
     
     var body1 = this.actors[id1];
 
@@ -2086,6 +2449,80 @@ game.prototype.checkActvAct = function(id1, id2){
 
 //if point is under floor, has downwards velocity, and of a unique joint, collide
 game.prototype.checkActvFloor = function(id){
+    
+    var contacts;
+    
+    var maxPenetrate = 0;
+    
+    var nrmDir = new PVector(0,-1);
+    var body = this.actors[id];
+    
+    
+    
+    for(var s = 0; s < body.activeSBs.length; s++){
+        var contacts = [];
+        var collided = false;
+        var sbody = body.subBodies[body.activeSBs[s]];
+        
+        drawPoints.push(sbody.com);
+        
+        
+        if(sbody.rest){
+            continue;   
+        }
+        for(var p = 0; p < sbody.partIds.length; p++){
+            var part = body.parts[sbody.partIds[p]];
+            if(part.tipPart<0){
+                continue;
+            }
+            var DEV_posSum = new PVector(0,0);
+            var DEV_countSum = 0;
+            
+            var DEV_tipIds;
+                        
+            
+            if(part.id === body.originP){//hardcoded for rectangles
+                DEV_tipIds = [0,1,2,3];
+            }else{
+                DEV_tipIds = [2,3];
+            }
+            
+            for(var v = 0; v < DEV_tipIds.length; v++){
+                if(part.vertexs.getPoint(DEV_tipIds[v]).y>this.floor){
+                    if(part.vertexs.getPoint(DEV_tipIds[v]).y>maxPenetrate){
+                       maxPenetrate=part.vertexs.getPoint(DEV_tipIds[v]).y;
+                       //this.actors[id].penetrate.y=(this.floor-maxPenetrate+this.actors[id].velo.y);
+                    }
+                    collided = true;
+                    
+                    contacts.push([part.id,0,part.vertexs.getPoint(DEV_tipIds[v]),nrmDir]);
+                    //^old
+                    
+                    DEV_posSum = addPVectors(DEV_posSum,part.vertexs.getPoint(DEV_tipIds[v]));
+                    DEV_countSum+=1;
+                    
+                }
+            }
+            if(DEV_countSum>0){
+                DEV_posSum = multPVector(DEV_posSum,1/DEV_countSum);
+                //contacts.push([part.id,0,DEV_posSum,nrmDir]);
+            }
+        }
+        if(collided){
+            this.contactsvR.push([id,-1,contacts]);
+        }
+    }
+    
+    var partialPen = 0.3;
+    var weight = 1;
+    if(maxPenetrate>0){
+        this.actors[id].penetrate.y+=(this.floor-maxPenetrate)*partialPen*weight;
+        this.actors[id].conCount+=weight;
+    }
+    
+};
+
+game.prototype.checkActvFloorBup = function(id){
     
     var contacts;
     
