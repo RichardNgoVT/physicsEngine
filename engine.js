@@ -212,10 +212,10 @@ var part = function(x, y){
     this.massPerVertex = 1;
     this.sF = 0.9;//static friction
     this.kF = 0.1;//kinetic friction
-    this.bounce = 0.0;
+    this.bounce = 0.1;
     this.width = 10;//length is from base part to tipPart
     this.goalAngVelo = 0;//PI/69
-    this.torqueMax = 100;//max torque that can be supplied
+    this.torqueMax = 1;//max torque that can be supplied
     //status
     this.vertexs = new pointStorage();//corners of part
     this.pos = new PVector(0, 0);//center of part
@@ -1385,6 +1385,8 @@ game.prototype.collide = function(id1, id2, contacts){
     var velocities = [];
     var sortedVelocities = [];
     
+    var sortedCollisions = [];
+    
     var impulses = [];
     var angChanges1 = [];
     var angChanges2 = [];
@@ -1393,6 +1395,8 @@ game.prototype.collide = function(id1, id2, contacts){
     var tested = [];
     
     var shields = [];
+    
+    var partsCollided = [];
     
     var DEV_Friction = 1;
     
@@ -1475,6 +1479,7 @@ game.prototype.collide = function(id1, id2, contacts){
         
         
         if(nrmDir.x === 0 && nrmDir.y === 0){
+            println('retired...');
             if(mag(relVelo.x,relVelo.y) > 5/60){
                 this.global_Collision = true;
                 //resolved = false;
@@ -1490,7 +1495,7 @@ game.prototype.collide = function(id1, id2, contacts){
                 continue;
             }
             else{
-                this.global_Collision = true;
+                //this.global_Collision = true;
             }
         }
         
@@ -1524,12 +1529,24 @@ game.prototype.collide = function(id1, id2, contacts){
         
         var k = 0;
 
-        while(k<sortedVelocities.length && relVelo>sortedVelocities[k][0])
+        while(k<sortedVelocities.length && mag(relVelo.x,relVelo.y)>mag(sortedVelocities[k][0].x,sortedVelocities[k][0].y))
         {
             k++;
         }
         
         sortedVelocities.splice(k, 0, [relVelo,i]);
+        
+        var k = 0;
+
+        while(k<sortedCollisions.length && part1.id>sortedCollisions[k][0])
+        {
+            k++;
+        }
+        
+        sortedCollisions.splice(k, 0, [part1.id,i]);
+        
+        partsCollided[part1.id] = true;
+        
         
         
         
@@ -1598,6 +1615,7 @@ game.prototype.collide = function(id1, id2, contacts){
     
     
     while(!secured[0] || !secured[1]){
+        var secured = [false,false];
         xIpRange = [0,0];
         yIpRange = [0,0];
         turnRange1 = [0,0];
@@ -1707,6 +1725,7 @@ game.prototype.collide = function(id1, id2, contacts){
             var aidVelo = new PVector(0,0); //need better names...
             var limitDir = new PVector(0,0);
             
+            var block = false;
             
             
             while(part1.id !== body1.originP){//replace with (if not origin part) eventually
@@ -1737,7 +1756,24 @@ game.prototype.collide = function(id1, id2, contacts){
                 var stiffness = min(part1.torqueSup/abs(torqueReq),1);
                 
                 
+                //drawLines.push([part1.basePos,addPVectors(part1.basePos,multPVector(turnVelo,100))]);
+                drawLines.push([part1.basePos,addPVectors(part1.basePos,multPVector(passVelo,10))]);
+                
+                if(sortedVelocities[0][0].x>112){
+                    println('in1');
+                    println(relVelo);
+                    println(passDir);
+                    println(passVelo);
+                    println(turnVelo);
+                    
+                    
+                    println('out');
+                }
+                
+                
+                
                 turnVelo = multPVector(turnVelo,stiffness);
+                
                 
                 passVelo = addPVectors(turnVelo,passVelo);
                 
@@ -1753,10 +1789,10 @@ game.prototype.collide = function(id1, id2, contacts){
                         limitDir = new PVector(0,0);
 
                     }
-                    
-                    part1.pColor[0] = 245;
-                    part1.pColor[1] = 233;
-                    part1.pColor[2] = 66;
+                    part1.pColor = [149, 235, 52];
+                    //part1.pColor[0] = 149;
+                    //part1.pColor[1] = 235;
+                    //part1.pColor[2] = 52;
         
                 }
                 
@@ -1764,19 +1800,57 @@ game.prototype.collide = function(id1, id2, contacts){
     
                 part1.torqueSup -= min(abs(torqueReq),part1.torqueSup);
                 
+                if(sortedVelocities[0][0].x>112){
+                    println('in2');
+                    println(relVelo);
+                    println(passDir);
+                    println(passVelo);
+                    println(turnVelo);
+                    
+                    println('out');
+                }
+                
+                
+                
+                
                 var relVelo = passVelo;
                 
-                var part1 = body1.parts[part1.basePart];
+                
+                //var spot1 = new PVector(100,100);
+                //var spot2 = new PVector(300,100);
+     
+                //drawLines.push([spot1,addPVectors(spot1,multPVector(turnVelo,1000))]);
+                //drawLines.push([spot2,addPVectors(spot2,multPVector(passVelo,1000))]);
+            
+               //drawLines.push([part1.pos,addPVectors(part1.pos,multPVector(passVelo,10))]);
+               //drawLines.push([part1.pos,addPVectors(part1.pos,multPVector(turnVelo,10))]);
+            
+                
+                if(partsCollided[part1.basePart]){
+                   block = true;
+                   limitDir = new PVector(0,0);
+                   break;
+                }
+
+                    var part1 = body1.parts[part1.basePart];
+                
     
             }
             
+            shields[i] = [normalize(limitDir),aidVelo];
+            
+            if(block){//can be done much better...
+                tested[i] = true;
+                impulses[i] = new PVector(0,0);
+                continue;
+            }
             
             if(breakCount === 0){
                 secured[c] = true;
                 tight[i] = true;
             }
             
-            shields[i] = [normalize(limitDir),aidVelo];
+            
                 
             
             
@@ -1815,9 +1889,21 @@ game.prototype.collide = function(id1, id2, contacts){
     }
     
     
+    for(var T = 0; T < impulses.length;T++){
+        if(active[T]){
+            if(impulses[T].y<-200){
+                println(contacts[T][0]+':'+multPVector(impulses[T],1/sbody1.mass));
+                println(sortedVelocities);
+            }
+        }
+        
+    }
     
+    //println(impulses);
+    //println('');
     if(!sbody1.rest){
-        drawLines.push([sbody1.com,addPVectors(sbody1.com,multPVector(new PVector(xIpRange[0]+xIpRange[1],yIpRange[0]+yIpRange[1]),1))]);
+        //println(frameCount+' '+multPVector(new PVector(xIpRange[0]+xIpRange[1],yIpRange[0]+yIpRange[1]),1/sbody1.mass));
+        drawLines.push([sbody1.com,addPVectors(sbody1.com,multPVector(new PVector(xIpRange[0]+xIpRange[1],yIpRange[0]+yIpRange[1]),10/sbody1.mass))]);
         //println(id1+': '+new PVector(xIpRange[0]+xIpRange[1],yIpRange[0]+yIpRange[1]));
         sbody1.velo.x+=(xIpRange[0]+xIpRange[1])/sbody1.mass;
         sbody1.velo.y+=(yIpRange[0]+yIpRange[1])/sbody1.mass;
@@ -1832,9 +1918,12 @@ game.prototype.collide = function(id1, id2, contacts){
         sbody2.angVelo-=turnRange2[0]+turnRange2[1];
     }
     
+    //for(var i = 0; i<contacts.length; i++){ 
     
-
-    for(var i = 0; i<contacts.length; i++){
+    for(var s = 0; s<sortedCollisions.length; s++){
+        var i = sortedCollisions[s][1];
+   
+        
         if(!active[i]){
             continue;
         }
@@ -1884,7 +1973,7 @@ game.prototype.collide = function(id1, id2, contacts){
                 //continue;
             }
             else{
-                this.global_Collision = true;
+                //this.global_Collision = true;
             }
         }
         
@@ -1930,12 +2019,18 @@ game.prototype.collide = function(id1, id2, contacts){
                 relVelo = passVelo;
     
             }
-        var part1 = body1.parts[part1.basePart];
+            
+            
+            var part1 = body1.parts[part1.basePart];
+            
+
+            
+            
         
         }
     }
 
-    
+    //println(this.global_Collision);
 };
 
 
@@ -2165,7 +2260,7 @@ game.prototype.collideBup = function(id1, id2, contacts){
     
     
     if(!sbody1.rest){
-        drawLines.push([sbody1.com,addPVectors(sbody1.com,multPVector(new PVector(xIpRange[0]+xIpRange[1],yIpRange[0]+yIpRange[1]),1))]);
+        //drawLines.push([sbody1.com,addPVectors(sbody1.com,multPVector(new PVector(xIpRange[0]+xIpRange[1],yIpRange[0]+yIpRange[1]),1))]);
         //println(id1+': '+new PVector(xIpRange[0]+xIpRange[1],yIpRange[0]+yIpRange[1]));
         sbody1.velo.x+=(xIpRange[0]+xIpRange[1])/sbody1.mass;
         sbody1.velo.y+=(yIpRange[0]+yIpRange[1])/sbody1.mass;
@@ -2727,7 +2822,6 @@ game.prototype.applyCollisions = function(){
         }
         resCounter+=1;
     }
-    
     //println(resCounter);
     
     //uncomment to enable rest
@@ -2875,7 +2969,7 @@ body.prototype.bendJoints = function(turnJ, J){
     currPart.basePos.x = turnPart.basePos.x+turned.x;
     currPart.basePos.y = turnPart.basePos.y+turned.y;
     
-    drawPoints.push(currPart.basePos);
+    //drawPoints.push(currPart.basePos);
 };
 
 body.prototype.applyTurns = function(){
