@@ -25,31 +25,62 @@ keyPressed = function() {
     {
        keys[3] = true; 
     }
-    if(keyCode === 65)//a
+    if(keyCode === 69)//e
     {
-        keys[4] = true; 
+       keys[4] = true; 
     }
-    if(keyCode === 83)//s
+    if(keyCode === 82)//r
     {
        keys[5] = true; 
     }
-    if(keyCode === 90)//z
+    if(keyCode === 65)//a
     {
         keys[6] = true; 
     }
-    if(keyCode === 88)//x
+    if(keyCode === 83)//s
     {
        keys[7] = true; 
     }
-    if(keyCode === 67)//c
+    if(keyCode === 68)//d
     {
-        keys[8] = true; 
+       keys[8] = true; 
     }
-    if(keyCode === 86)//v
+    if(keyCode === 70)//f
     {
        keys[9] = true; 
     }
-    
+    if(keyCode === 90)//z
+    {
+        keys[10] = true; 
+    }
+    if(keyCode === 88)//x
+    {
+       keys[11] = true; 
+    }
+    if(keyCode === 67)//c
+    {
+        keys[12] = true; 
+    }
+    if(keyCode === 86)//v
+    {
+       keys[13] = true; 
+    }
+    if(keyCode === 37)//left
+    {
+       keys[14] = true; 
+    }
+    if(keyCode === 39)//right
+    {
+       keys[15] = true; 
+    }
+    if(keyCode === 38)//up
+    {
+       keys[16] = true; 
+    }
+    if(keyCode === 40)//down
+    {
+       keys[17] = true; 
+    }
 };
 
 keyReleased = function() {
@@ -57,7 +88,6 @@ keyReleased = function() {
     if(keyCode === 32)//spacebar
     {
         keys[0] = false;
-        
     }
     if(keyCode === 190)//.
     {
@@ -72,29 +102,61 @@ keyReleased = function() {
     {
        keys[3] = false; 
     }
-    if(keyCode === 65)//a
+    if(keyCode === 69)//e
     {
-        keys[4] = false; 
+       keys[4] = false; 
     }
-    if(keyCode === 83)//s
+    if(keyCode === 82)//r
     {
        keys[5] = false; 
     }
-    if(keyCode === 90)//z
+    if(keyCode === 65)//a
     {
         keys[6] = false; 
     }
-    if(keyCode === 88)//x
+    if(keyCode === 83)//s
     {
        keys[7] = false; 
     }
+    if(keyCode === 68)//d
+    {
+       keys[8] = false; 
+    }
+    if(keyCode === 70)//f
+    {
+       keys[9] = false; 
+    }
+    if(keyCode === 90)//z
+    {
+        keys[10] = false; 
+    }
+    if(keyCode === 88)//x
+    {
+       keys[11] = false; 
+    }
     if(keyCode === 67)//c
     {
-        keys[8] = false; 
+        keys[12] = false; 
     }
     if(keyCode === 86)//v
     {
-       keys[9] = false; 
+       keys[13] = false; 
+    }
+    if(keyCode === 37)//left
+    {
+       keys[14] = false; 
+    }
+    if(keyCode === 39)//right
+    {
+       keys[15] = false; 
+    }
+    if(keyCode === 38)//up
+    {
+       keys[16] = false; 
+    }
+    if(keyCode === 40)//down
+    {
+       keys[17] = false; 
     }
 };
 
@@ -215,7 +277,7 @@ var part = function(x, y){
     this.bounce = 0.1;
     this.width = 10;//length is from base part to tipPart
     this.goalAngVelo = 0;//PI/69
-    this.torqueMax = 1;//max torque that can be supplied
+    this.torqueMax = 10000;//max torque that can be supplied
     //status
     this.vertexs = new pointStorage();//corners of part
     this.pos = new PVector(0, 0);//center of part
@@ -753,47 +815,77 @@ body.prototype.relaxJoint = function(j){
 body.prototype.controls = function(){
     var turnVelo = PI/69;
     if(keys[2]){//q
-    
-        this.parts[4].turning = true;
-        this.parts[4].goalAngVelo = -PI/69;
-        this.parts[4].torqueMax = 7000;
-        
-        
+        this.parts[2].goalAngVelo = -PI/69;
     }
     else if(keys[3]){//w
-        this.parts[4].turning = true;
+        
+        this.parts[2].goalAngVelo = PI/69;
+    }
+    else{
+        this.parts[2].goalAngVelo = 0;
+    }
+    
+    if(keys[4]){//e
+        this.parts[6].goalAngVelo = -PI/69;
+    }
+    else if(keys[5]){//r
+        
+        this.parts[6].goalAngVelo = PI/69;
+    }
+    else{
+        this.parts[6].goalAngVelo = 0;
+    }
+    
+    if(keys[6]){//a
+        this.parts[3].goalAngVelo = -PI/69;
+    }
+    else if(keys[7]){//s
+        
+        this.parts[3].goalAngVelo = PI/69;
+    }
+    else{
+        this.parts[3].goalAngVelo = 0;
+    }
+    
+    if(keys[8]){//d
+        this.parts[7].goalAngVelo = -PI/69;
+    }
+    else if(keys[9]){//f
+        
+        this.parts[7].goalAngVelo = PI/69;
+    }
+    else{
+        this.parts[7].goalAngVelo = 0;
+    }
+    
+    if(keys[10]){//z
+        this.parts[4].goalAngVelo = -PI/69;
+    }
+    else if(keys[11]){//x
+        
         this.parts[4].goalAngVelo = PI/69;
-        this.parts[4].torqueMax = 7000;
     }
     else{
-
-    }
-    if(keys[4]){//a
-        this.parts[4].turning = true;
         this.parts[4].goalAngVelo = 0;
-        this.parts[4].torqueMax = 0;
-        
-        this.parts[8].turning = true;
-        this.parts[8].goalAngVelo = 0;
-        this.parts[8].torqueMax = 1;
     }
-    else if(keys[5]){//s
-        this.parts[4].turning = true;
-        this.parts[4].goalAngVelo = 0;
-        this.parts[4].torqueMax = 100000;
+    
+    if(keys[12]){//c
+        this.parts[8].goalAngVelo = -PI/69;
+    }
+    else if(keys[13]){//v
         
-        this.parts[8].turning = true;
-        this.parts[8].goalAngVelo = 0;
-        this.parts[8].torqueMax = 100000;
+        this.parts[8].goalAngVelo = PI/69;
     }
     else{
-        
+        this.parts[8].goalAngVelo = 0;
     }
-    if(keys[6]){//z
+    
+    
+    if(keys[14]){//left
         this.subBodies[0].velo.x = -1;
         
     }
-    else if(keys[7]){//x
+    else if(keys[15]){//right
         this.subBodies[0].velo.x = 1;
     }
     
