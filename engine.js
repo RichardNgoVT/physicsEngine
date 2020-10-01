@@ -1477,7 +1477,8 @@ game.prototype.collide = function(id1, id2, contacts){
     var velocities = [];
     var sortedVelocities = [];
     
-    var sortedPriorities = [];
+    var sortedPriorities1 = [];
+    var sortedPriorities2 = [];
     
     var impulses = [];
     var angChanges1 = [];
@@ -1485,9 +1486,10 @@ game.prototype.collide = function(id1, id2, contacts){
     
     var tight = [];
     
+    //speed up limb resolutions
+    var unsecure1 = [];
+    var unsecure2 = [];
     
-    
-    var involved = [];
     
     var DEV_Friction = 1;
     
@@ -1566,22 +1568,35 @@ game.prototype.collide = function(id1, id2, contacts){
             continue;
         }
         else{
-            //this.global_Collision = true;
+            this.global_Collision = true;
         }
     
         
         active[i] = true;
         
-        var breakCount = 0;
-        var scoutPart = part1;
-        while(scoutPart.id !== body1.originP){//might save some time...
-            if(scoutPart.torqueSup <= 0){
-                var passDir = normalize(subPVectors(contact,scoutPart.basePos));
-                var relVelo = multPVector(passDir,getDot(relVelo,passDir));
+        if(!sbody1.rest){
+            var scoutPart = part1;
+            while(scoutPart.id !== body1.originP){//might save some time...
+                if(scoutPart.torqueSup <= 0){
+                    unsecure1[i] = true;
+                    var passDir = getUV(scoutPart.basePos,contact);
+                    var relVelo = multPVector(passDir,getDot(relVelo,passDir));
+                }
+                var scoutPart = body1.parts[scoutPart.basePart];
             }
-            var scoutPart = body1.parts[scoutPart.basePart];
         }
         
+        if(!sbody2.rest){
+            var scoutPart = part2;
+            while(scoutPart.id !== body2.originP){//might save some time...
+                if(scoutPart.torqueSup <= 0){
+                    unsecure2[i] = true;
+                    var passDir = getUV(scoutPart.basePos,contact);
+                    var relVelo = multPVector(passDir,getDot(relVelo,passDir));
+                }
+                var scoutPart = body2.parts[scoutPart.basePart];
+            }
+        }
         
         properties[1] = [false,false];
         var impulse = getImpulse(sbody1,sbody2,contact,nrmDir,relVelo,properties);
@@ -1599,17 +1614,27 @@ game.prototype.collide = function(id1, id2, contacts){
         sortedVelocities.splice(s, 0, [relVelo,i]);
         
         var s = 0;
-
-        while(s<sortedPriorities.length && part1.id>sortedPriorities[s][0])
-        {
-            s++;
+        
+        //prevent redundant collisions
+        if(!sbody1.rest){
+            while(s<sortedPriorities1.length && part1.id>sortedPriorities1[s][0])
+            {
+                s++;
+            }
+            
+            sortedPriorities1.splice(s, 0, [part1.id,i]);
         }
+    
+        var s = 0;
         
-        sortedPriorities.splice(s, 0, [part1.id,i]);//prevent redundant collisions
-        
-        involved[part1.id] = true;//prevent redundant torque damage
-        
-        
+        if(!sbody2.rest){
+            while(s<sortedPriorities2.length && part2.id>sortedPriorities2[s][0])
+            {
+                s++;
+            }
+            
+            sortedPriorities2.splice(s, 0, [part2.id,i]);
+        }
         
         var angChange1 = 0;
         if(!sbody1.rest){
@@ -1637,11 +1662,10 @@ game.prototype.collide = function(id1, id2, contacts){
     
     var cushionImp = [[new PVector(0,0), 0, 0]];
     
-    var unsecured = [];//speed up limb resolutions
     //check if both sides of com relative to overall direction secured
-    var secured = [false,false];
+    var secured = [false,false,false,false];
     //var devEXIT = true;
-    while(!secured[0] || !secured[1]){
+    while(!secured[0] || !secured[1] || !secured[2] || !secured[3]){
         xIpRange = [0,0];
         yIpRange = [0,0];
         turnRange1 = [0,0];
@@ -1666,14 +1690,19 @@ game.prototype.collide = function(id1, id2, contacts){
         
         
         var netDir = normalize(new PVector(xIpRange[0]+xIpRange[1],yIpRange[0]+yIpRange[1]));
-        netDir = multPVector(netDir,-1);//overall initial dir of body1
+        //from perspective of body1, not nessesary
+        netDir = multPVector(netDir,-1);
         
-        var splitter = getCross(netDir,sbody1.com);
+        var balanceP1 = getCross(netDir,sbody1.com);
+        var balanceP2 = getCross(netDir,sbody2.com);
         
-        var checkPoints = [-1,-1];
+        var checkPoints = [-1,-1,-1,-1];
         
-        var rankL = -1;
-        var rankR = -1;
+        var rankL1 = -1;
+        var rankR1 = -1;
+        
+        var rankL2 = -1;
+        var rankR2 = -1;
         
         //check joints of fastest moving part on both sides
         for(var c = 0; c < contacts.length; c++){
@@ -1682,31 +1711,56 @@ game.prototype.collide = function(id1, id2, contacts){
             }
             var contact = contacts[c][2];
             
-            if(splitter>=getCross(netDir,contact)){
-                if(veloRankings[c] > rankL && ((tight[c]===false)===false)){
-                    rankL = veloRankings[c];
-                    checkPoints[0] = c;
+            if(!sbody1.rest){
+                if(balanceP1>=getCross(netDir,contact)){
+                    if(veloRankings[c] > rankL1 && ((tight[c]===false)===false)){
+                        rankL1 = veloRankings[c];
+                        checkPoints[0] = c;
+                    }
+                    
                 }
                 
+                if(balanceP1<=getCross(netDir,contact)){
+                    if(veloRankings[c] > rankR1 && ((tight[c]===false)===false)){
+                        rankR1 = veloRankings[c];
+                        checkPoints[1] = c;
+                    }
+                    
+                }
             }
             
-            if(splitter<=getCross(netDir,contact)){
-                if(veloRankings[c] > rankR && ((tight[c]===false)===false)){
-                    rankR = veloRankings[c];
-                    checkPoints[1] = c;
+            if(!sbody2.rest){
+                if(balanceP2>=getCross(netDir,contact)){
+                    if(veloRankings[c] > rankL2 && ((tight[c]===false)===false)){
+                        rankL2 = veloRankings[c];
+                        checkPoints[2] = c;
+                    }
+                    
                 }
                 
+                if(balanceP2<=getCross(netDir,contact)){
+                    if(veloRankings[c] > rankR2 && ((tight[c]===false)===false)){
+                        rankR2 = veloRankings[c];
+                        checkPoints[3] = c;
+                    }
+                    
+                }
             }
-
             
         }
+        
+        secured = [false,false,false,false];
         
         for(var c = 0; c < checkPoints.length; c++){
             
             var i = checkPoints[c];
             
             if(i<0 || tight[i]){
-                secured[c] = true;//in the case point is directly in the middle
+                secured[c] = true;
+                continue;
+            }
+            
+            if(tight[i]===false){//point already tested
                 continue;
             }
             
@@ -1724,6 +1778,7 @@ game.prototype.collide = function(id1, id2, contacts){
             
             var relVelo = velocities[i];
             
+            //reinforce
             var supportImp = [[0,0],[0,0],[0,0],[0,0]];//x,y,ang1,ang2
             
             for(var p = 0; p < cushionImp.length; p++){
@@ -1755,69 +1810,204 @@ game.prototype.collide = function(id1, id2, contacts){
             supportVelo = addPVectors(supportVelo,getLinearVelo(sbody2.com,ang2sum,contact));
             
             //acts like normal force
+            if(true){
+            //
             if(relVelo.x*supportVelo.x<0){
-                relVelo.x = max(relVelo.x+supportVelo.x,0);
+                if(abs(relVelo.x)>abs(supportVelo.x)){
+                    relVelo.x = relVelo.x+supportVelo.x;
+                }
+                else{
+                    relVelo.x = 0;
+                }
             }
             
             if(relVelo.y*supportVelo.y<0){
-                relVelo.y = max(relVelo.y+supportVelo.y,0);
+                if(abs(relVelo.y)>abs(supportVelo.y)){
+                    relVelo.y = relVelo.y+supportVelo.y;
+                }
+                else{
+                    relVelo.y = 0;
+                }
+            }
+            //
             }
             
-            var breakCount = 0;
+            var torqueDamages1 = [];
+            var torqueDamages2 = [];
             
             
+            
+            var mostBroke = [1];//stiffness,part,side
+            
+            var broke = true;
+            
+            
+            //test joints
+            secured[c] = true;
+            while(broke){
+                
+                broke = false;
+                var travel = 0;
+                var part1 = body1.parts[p1];
+                while(part1.id !== body1.originP){
+                    if(sbody1.rest){
+                        break;
+                    }
+                    part1.pColor = [230, 0, 255];
+                    
+                    var passDir = normalize(subPVectors(contact,part1.basePos));
+                    var passVelo = multPVector(passDir,getDot(relVelo,passDir));
+                    var turnVelo = new PVector(0,0);
+                    
+                    var stiffness = 0;
+                    
+                    var torqueDamage = 0;
+                    if(part1.torqueSup>0){
+                        turnVelo = subPVectors(relVelo,passVelo);
+                        
+                        var sbodyT1 = body1.subBodies[part1.id];
+                        
+                        var impulse = getImpulse(sbodyT1,sbody2,contact,nrmDir,turnVelo,properties);
+                        var relContact1 = new PVector(contact.x-part1.basePos.x,contact.y-part1.basePos.y);
+                        var angOffset = getCross(relContact1,impulse)/sbodyT1.ghInertia;
+            
+                        var radiusOSB = mag(sbodyT1.outerSB.com.x-part1.basePos.x,sbodyT1.outerSB.com.y-part1.basePos.y);
+                        
+                        var torqueReq = angOffset/(1/sbodyT1.outerSB.mass/radiusOSB/radiusOSB);
+                        
+                        stiffness = min(part1.torqueSup/abs(torqueReq),1);
+                        
+                        //turnVelo = multPVector(turnVelo,stiffness);
+                        
+                        //passVelo = addPVectors(turnVelo,passVelo);
+                        
+                        torqueDamage = min(abs(torqueReq),part1.torqueSup);
+                        //part1.torqueSup -= min(abs(torqueReq),part1.torqueSup);
+                    }
+                    
+                    torqueDamages1[travel] = torqueDamage;
+                    
+                    if(stiffness<mostBroke[0]){
+                        if(part1.torqueSup>0){//new break
+                            mostBroke[0] = stiffness;
+                            mostBroke[1] = turnVelo;
+                            mostBroke[2] = part1.id;
+                            mostBroke[3] = 1;
+                            mostBroke[4] = travel;
+                            broke = true;
+                        }
+                        unsecure1[i] = true;
+                        tight[i] = false;
+                        secured[c] = false;
+                        part1.pColor = [149, 235, 52];
+                    }
+                    
+                    //var relVelo = passVelo;
+                    
+                   //drawLines.push([part1.pos,addPVectors(part1.pos,multPVector(passVelo,10))]);
+                   //drawLines.push([part1.pos,addPVectors(part1.pos,multPVector(turnVelo,10))]);
+                    travel += 1;
+                    var part1 = body1.parts[part1.basePart];
+                }
+                
+                travel = 0;
+                var part2 = body2.parts[p2];
+                while(part2.id !== body2.originP){
+                    if(sbody2.rest){
+                        break;
+                    }
+                    part2.pColor = [230, 0, 255];
+                    
+                    var passDir = normalize(subPVectors(contact,part2.basePos));
+                    var passVelo = multPVector(passDir,getDot(relVelo,passDir));
+                    var turnVelo = new PVector(0,0);
+                    
+                    var stiffness = 0;
+                    
+                    var torqueDamage = 0;
+                    if(part2.torqueSup>0){
+                        turnVelo = subPVectors(relVelo,passVelo);
+                        
+                        var sbodyT2 = body2.subBodies[part2.id];
+                        
+                        var impulse = getImpulse(sbody1,sbodyT2,contact,nrmDir,turnVelo,properties);           
+                        impulse = multPVector(impulse,-1);//doesn't really matter here
+                        
+                        var relContact2 = new PVector(contact.x-part2.basePos.x,contact.y-part2.basePos.y);
+                        var angOffset = getCross(relContact2,impulse)/sbodyT2.ghInertia;
+            
+                        var radiusOSB = mag(sbodyT2.outerSB.com.x-part2.basePos.x,sbodyT2.outerSB.com.y-part2.basePos.y);
+                        
+                        var torqueReq = angOffset/(1/sbodyT2.outerSB.mass/radiusOSB/radiusOSB);
+                        
+                        stiffness = min(part2.torqueSup/abs(torqueReq),1);
+                        
+                        torqueDamage = min(abs(torqueReq),part2.torqueSup);
+                    }
+                    
+                    torqueDamages2[travel] = torqueDamage;
+                    
+                    if(stiffness<mostBroke[0]){
+                        if(part2.torqueSup>0){//new break
+                            mostBroke[0] = stiffness;
+                            mostBroke[1] = turnVelo;
+                            mostBroke[2] = part2.id;
+                            mostBroke[3] = 2;
+                            mostBroke[4] = travel;
+                            broke = true;
+                        }
+                        unsecure2[i] = true;
+                        tight[i] = false;
+                        secured[c] = false;
+                        part2.pColor = [149, 235, 52];
+                    }
 
+                    travel += 1;
+                    var part2 = body2.parts[part2.basePart];
+                }
+                if(broke){
+                    relVelo = subPVectors(relVelo,multPVector(mostBroke[1],1-mostBroke[0]));
+                    if(mostBroke[3]===1){
+                        body1.parts[mostBroke[2]].torqueSup-=torqueDamages1[mostBroke[4]];
+                        
+                    }
+                    
+                    if(mostBroke[3]===2){
+                        body2.parts[mostBroke[2]].torqueSup-=torqueDamages2[mostBroke[4]];
+                        
+                    }
+                    
+                    
+                }
+                
+                
+            }
             
+            //apply torque damages
+            var travel = 0;
+            var part1 = body1.parts[p1];
             while(part1.id !== body1.originP){
-                part1.pColor = [230, 0, 255];
-                var passDir = normalize(subPVectors(contact,part1.basePos));
-                var passVelo = multPVector(passDir,getDot(relVelo,passDir));
-                var turnVelo = new PVector(0,0);
-                
-                var stiffness = 0;
-                if(part1.torqueSup>0){
-                    turnVelo = subPVectors(relVelo,passVelo);
-                    
-                    var sbodyT1 = body1.subBodies[part1.id];
-                    
-                    var impulse = getImpulse(sbodyT1,sbody2,contact,nrmDir,turnVelo,properties);
-                    var relContact1 = new PVector(contact.x-part1.basePos.x,contact.y-part1.basePos.y);
-                    var angOffset = getCross(relContact1,impulse)/sbodyT1.ghInertia;
-        
-                    var radiusOSB = mag(sbodyT1.outerSB.com.x-part1.basePos.x,sbodyT1.outerSB.com.y-part1.basePos.y);
-                    
-                    var torqueReq = angOffset/(1/sbodyT1.outerSB.mass/radiusOSB/radiusOSB);
-                    
-                    stiffness = min(part1.torqueSup/abs(torqueReq),1);
-                    
-                    //drawLines.push([part1.basePos,addPVectors(part1.basePos,multPVector(turnVelo,100))]);
-                    //drawLines.push([part1.basePos,addPVectors(part1.basePos,multPVector(passVelo,10))]);
-                    turnVelo = multPVector(turnVelo,stiffness);
-                    
-                    passVelo = addPVectors(turnVelo,passVelo);
-                    
-                    part1.torqueSup -= min(abs(torqueReq),part1.torqueSup);
+                if(sbody1.rest){
+                    break;
                 }
-
-                if(stiffness<1){//sent turnVelo will also need to include friction
-                    tight[i] = false;
-                    breakCount+=1;
-                    part1.pColor = [149, 235, 52];
-                }
-                
-                var relVelo = passVelo;
-                
-               //drawLines.push([part1.pos,addPVectors(part1.pos,multPVector(passVelo,10))]);
-               //drawLines.push([part1.pos,addPVectors(part1.pos,multPVector(turnVelo,10))]);
-            
+                part1.torqueSup-=torqueDamages1[travel];
+                travel+=1;
                 var part1 = body1.parts[part1.basePart];
             }
             
+            var travel = 0;
+            var part2 = body2.parts[p2];
+            while(part2.id !== body2.originP){
+                if(sbody2.rest){
+                    break;
+                }
+                part2.torqueSup-=torqueDamages2[travel];
+                travel+=1;
+                var part2 = body2.parts[part2.basePart];
+            }
             
             
-            
-            if(breakCount === 0){
-                secured[c] = true;
+            if(secured[c]){
                 tight[i] = true;
                 cushionImp.push([impulses[i],angChanges1[i],angChanges2[i]]);
                 continue;//no need to overwrite impulse, though still could
@@ -1876,11 +2066,10 @@ game.prototype.collide = function(id1, id2, contacts){
     }
     
     
-    
-    for(var s = 0; s<sortedPriorities.length; s++){
-        var i = sortedPriorities[s][1];
+    for(var s = 0; s<sortedPriorities1.length; s++){
+        var i = sortedPriorities1[s][1];
         
-        if(!active[i] || tight[i]){// (tight[i]===false)===false to also ignore undefined
+        if(!unsecure1[i]){// (tight[i]===false)===false to also ignore undefined
             continue;
         }
         var p1 = contacts[i][0];
@@ -1923,9 +2112,6 @@ game.prototype.collide = function(id1, id2, contacts){
             //this.global_Collision = true;
         }
         
-        
-        //println(part1.torqueSup<=0);
-        
         while(part1.id !== body1.originP){
             //this check is faster, but would be more accurate to recalc velo each time
             if(part1.torqueSup<=0){
@@ -1938,27 +2124,93 @@ game.prototype.collide = function(id1, id2, contacts){
                 }
     
                 var sbodyT1 = body1.subBodies[part1.id];
-                
-                //var spot1 = new PVector(100,100);
-                //var spot2 = new PVector(300,100);
-     
-                //drawLines.push([spot1,addPVectors(spot1,multPVector(turnVelo,1000))]);
-                //drawLines.push([spot2,addPVectors(spot2,multPVector(passVelo,1000))]);
     
                 var impulse = getImpulse(sbodyT1,sbody2,contact,nrmDir,turnVelo,properties);
                 var relContact1 = new PVector(contact.x-part1.basePos.x,contact.y-part1.basePos.y);
                 var angOffset = getCross(relContact1,impulse)/sbodyT1.ghInertia;
                 
                 sbodyT1.angVelo+=angOffset;
-                //println(sbodyT1.angVelo);
-                
-                //figure out how to transfer linear impulse to main later
                 
                 relVelo = passVelo;
     
             }
             
             var part1 = body1.parts[part1.basePart];
+        }
+    }
+    
+    for(var s = 0; s<sortedPriorities2.length; s++){
+        var i = sortedPriorities2[s][1];
+        
+        if(!unsecure2[i]){// (tight[i]===false)===false to also ignore undefined
+            continue;
+        }
+        var p1 = contacts[i][0];
+        var p2 = contacts[i][1];
+        var contact = contacts[i][2];
+        var nrmDir = contacts[i][3];
+
+        var part1 = body1.parts[p1];
+        var part2 = body2.parts[p2];
+        
+        //for the sake of easier, refine later
+        var properties = [part1.bounce*dampen, [true,false], [part1.basePos,part2.basePos]];
+        
+        var velo1;
+        var velo2;
+        
+        if(sbody1.rest){
+            velo1 = PVector(0,0);
+        }else{
+            velo1 = body1.getVelocityContributions(part1.id,contact);
+        }
+        
+        if(sbody2.rest){
+            velo2 = new PVector(0,0);
+        }else{
+            velo2 = body2.getVelocityContributions(part2.id,contact);
+        }
+
+        var relVelo = subPVectors(velo1,velo2);
+        relVelo.x*=DEV_Friction;
+        
+       
+        var veloCheck = getDot(relVelo, nrmDir);
+        if(veloCheck>0){
+            relVelo.x-=nrmDir.x*veloCheck;
+            relVelo.y-=nrmDir.y*veloCheck;
+            //continue;
+        }
+        else{
+            //this.global_Collision = true;
+        }
+        
+        while(part2.id !== body2.originP){
+            //this check is faster, but would be more accurate to recalc velo each time
+            if(part2.torqueSup<=0){
+                var passDir = normalize(subPVectors(contact,part2.basePos));
+                var passVelo = multPVector(passDir,getDot(relVelo,passDir));
+                var turnVelo = subPVectors(relVelo,passVelo);
+                
+                if(getDot(turnVelo, nrmDir)>0){
+                    break;
+                }
+    
+                var sbodyT2 = body2.subBodies[part2.id];
+    
+                var impulse = getImpulse(sbody1,sbodyT2,contact,nrmDir,turnVelo,properties);
+                impulse = multPVector(impulse,-1);
+                
+                var relContact2 = new PVector(contact.x-part2.basePos.x,contact.y-part2.basePos.y);
+                var angOffset = getCross(relContact2,impulse)/sbodyT2.ghInertia;
+                
+                sbodyT2.angVelo+=angOffset;
+                
+                relVelo = passVelo;
+    
+            }
+            
+            var part2 = body2.parts[part2.basePart];
         }
     }
 
@@ -3049,7 +3301,7 @@ game.prototype.applyCollisions = function(){
     while(this.global_Collision){
         this.global_Collision = false;
         for(var i = 0; i<this.contacts.length; i++){
-            
+            /*
             if(this.contacts[i][0] === 0){
                 this.collide(this.contacts[i][0],this.contacts[i][1],this.contacts[i][2]);
             }
@@ -3057,8 +3309,8 @@ game.prototype.applyCollisions = function(){
             if(this.contacts[i][0] === 1){
                 this.collideHOLD(this.contacts[i][0],this.contacts[i][1],this.contacts[i][2]);
             }
-            
-            //this.collide(this.contacts[i][0],this.contacts[i][1],this.contacts[i][2]);
+            */
+            this.collide(this.contacts[i][0],this.contacts[i][1],this.contacts[i][2]);
         }
         if(resCounter > 35){//move this
             this.global_Collision = false;
@@ -3111,7 +3363,7 @@ game.prototype.checkCollisions = function(){
     for(var i = 0; i<this.actors.length-1;i++){
         for(var j = i+1; j<this.actors.length;j++){
             if(!(this.actors[i].xRange[0]>this.actors[j].xRange[1] || this.actors[i].xRange[1]<this.actors[j].xRange[0] || this.actors[i].yRange[0]>this.actors[j].yRange[1] || this.actors[i].yRange[1]<this.actors[j].yRange[0])){
-                //this.checkActvAct(i,j);
+                this.checkActvAct(i,j);
             }
         }
     }
@@ -3613,7 +3865,7 @@ game.prototype.initGame = function(){
     
     var legs2 = new body();
     legs2.id = 1;
-    legs2.createLegs(200,100);
+    legs2.createLegs(200,-100);
     //legs2.subBodies[0].velo.x = 1;
     
     var limb1 = new body();
@@ -3629,7 +3881,7 @@ game.prototype.initGame = function(){
     //this.actors[0] = limb1;
     //this.actors[1] = limb2;
     this.actors[0] = legs1;
-    //this.actors[1] = legs2;
+    this.actors[1] = legs2;
 
 };
 
