@@ -1485,7 +1485,7 @@ game.prototype.collide = function(id1, id2, contacts){
     
     var tight = [];
     
-    var shields = [];
+    
     
     var involved = [];
     
@@ -1635,8 +1635,9 @@ game.prototype.collide = function(id1, id2, contacts){
         veloRankings[sortedVelocities[i][1]] = i;
     }
     
+    var cushionImp = [[new PVector(0,0), 0, 0]];
     
-    var unsecured = [];
+    var unsecured = [];//speed up limb resolutions
     //check if both sides of com relative to overall direction secured
     var secured = [false,false];
     //var devEXIT = true;
@@ -1671,7 +1672,6 @@ game.prototype.collide = function(id1, id2, contacts){
         
         var checkPoints = [-1,-1];
         
-        var sideSorted = [[],[]];//only shielded by those on same side
         var rankL = -1;
         var rankR = -1;
         
@@ -1683,7 +1683,6 @@ game.prototype.collide = function(id1, id2, contacts){
             var contact = contacts[c][2];
             
             if(splitter>=getCross(netDir,contact)){
-                sideSorted[0].push(c);
                 if(veloRankings[c] > rankL && ((tight[c]===false)===false)){
                     rankL = veloRankings[c];
                     checkPoints[0] = c;
@@ -1692,7 +1691,6 @@ game.prototype.collide = function(id1, id2, contacts){
             }
             
             if(splitter<=getCross(netDir,contact)){
-                sideSorted[1].push(c);
                 if(veloRankings[c] > rankR && ((tight[c]===false)===false)){
                     rankR = veloRankings[c];
                     checkPoints[1] = c;
@@ -1726,38 +1724,49 @@ game.prototype.collide = function(id1, id2, contacts){
             
             var relVelo = velocities[i];
             
-
-                    
-            for(var h = 0; h < sideSorted[c].length; h++){
-                if(tight[sideSorted[c][h]] === false){//only shielded by faster parts
-                    var shield = shields[sideSorted[c][h]];
-                    if(getDot(relVelo,shield[0])>0){
-                        //in case only one baseward joint broken
-                        relVelo = zeroOutDir(relVelo,shield[0]);
-                    }
-                    
-                    
-                    //acts like normal force
-                    if(relVelo.x*shield[1].x>0){
-                        relVelo.x = max(relVelo.x-shield[1].x,0);
-                    }
-                    
-                    if(relVelo.y*shield[1].y>0){
-                        relVelo.y = max(relVelo.y-shield[1].y,0);
-                    }
-                }
+            var supportImp = [[0,0],[0,0],[0,0],[0,0]];//x,y,ang1,ang2
+            
+            for(var p = 0; p < cushionImp.length; p++){
+                supportImp[0][1] = max(supportImp[0][1],cushionImp[p][0].x);
+                supportImp[0][0] = min(supportImp[0][0],cushionImp[p][0].x);
+                
+                supportImp[1][1] = max(supportImp[1][1],cushionImp[p][0].y);
+                supportImp[1][0] = min(supportImp[1][0],cushionImp[p][0].y);
+                
+                supportImp[2][1] = max(supportImp[2][1],cushionImp[p][1]);
+                supportImp[2][0] = min(supportImp[2][0],cushionImp[p][1]);
+                
+                supportImp[3][1] = max(supportImp[3][1],cushionImp[p][2]);
+                supportImp[3][0] = min(supportImp[3][0],cushionImp[p][2]);
+            }
+            
+            var supportVelo = new PVector(0,0);
+            
+            var xsum = supportImp[0][0]+supportImp[0][1];
+            supportVelo.x = (xsum)/sbody1.mass+(xsum)/sbody2.mass;
+            
+            var ysum = supportImp[1][0]+supportImp[1][1];
+            supportVelo.y = (ysum)/sbody1.mass+(xsum)/sbody2.mass;
+            
+            var ang1sum = supportImp[2][0]+supportImp[2][1];
+            var ang2sum = supportImp[3][0]+supportImp[3][1];
+            
+            supportVelo = addPVectors(supportVelo,getLinearVelo(sbody1.com,ang1sum,contact));
+            supportVelo = addPVectors(supportVelo,getLinearVelo(sbody2.com,ang2sum,contact));
+            
+            //acts like normal force
+            if(relVelo.x*supportVelo.x<0){
+                relVelo.x = max(relVelo.x+supportVelo.x,0);
+            }
+            
+            if(relVelo.y*supportVelo.y<0){
+                relVelo.y = max(relVelo.y+supportVelo.y,0);
             }
             
             var breakCount = 0;
             
             
-            var aidVelo = new PVector(0,0); //resistance from remaining torque
-            var limitDir = new PVector(0,0);
-            var block = false;
-            
-            if(part1.id === body1.originP){
-                aidVelo = relVelo;
-            }
+
             
             while(part1.id !== body1.originP){
                 part1.pColor = [230, 0, 255];
@@ -1791,60 +1800,33 @@ game.prototype.collide = function(id1, id2, contacts){
                 }
 
                 if(stiffness<1){//sent turnVelo will also need to include friction
-                    
                     tight[i] = false;
                     breakCount+=1;
-                    aidVelo = addPVectors(aidVelo,turnVelo);
-                    limitDir = new PVector(0,0);
-                    if(breakCount === 1){//if only one break at limb
-                        limitDir = passDir;
-                    }
                     part1.pColor = [149, 235, 52];
-        
                 }
                 
                 var relVelo = passVelo;
                 
-                
-                //var spot1 = new PVector(100,100);
-                //var spot2 = new PVector(300,100);
-     
-                //drawLines.push([spot1,addPVectors(spot1,multPVector(turnVelo,1000))]);
-                //drawLines.push([spot2,addPVectors(spot2,multPVector(passVelo,1000))]);
-            
                //drawLines.push([part1.pos,addPVectors(part1.pos,multPVector(passVelo,10))]);
                //drawLines.push([part1.pos,addPVectors(part1.pos,multPVector(turnVelo,10))]);
             
-                //cut short if baseward part involved in collision
-                if(involved[part1.basePart]){
-                   limitDir = new PVector(0,0);
-                   block = true;
-                   break;
-                }
                 var part1 = body1.parts[part1.basePart];
             }
             
-            shields[i] = [normalize(limitDir),aidVelo];
             
-            if(block){//leave contribution responsibility to base
-                tight[i] = false;
-                impulses[i] = new PVector(0,0);
-                continue;
-            }
+            
             
             if(breakCount === 0){
                 secured[c] = true;
                 tight[i] = true;
-                continue;//no need to overwrite impulse
+                cushionImp.push([impulses[i],angChanges1[i],angChanges2[i]]);
+                continue;//no need to overwrite impulse, though still could
             }
             
 
             //update contribution
             properties[1] = [false,false];
             var impulse = getImpulse(sbody1,sbody2,contact,nrmDir,relVelo,properties);
-            
-            impulses[i] = impulse;
-            velocities[i] = relVelo;
             
             var angChange1 = 0;
             if(!sbody1.rest){
@@ -1858,6 +1840,13 @@ game.prototype.collide = function(id1, id2, contacts){
                 angChange2=(getCross(relContact2,impulse)/sbody2.inertia);
             }
             
+            cushionImp[0][0] = addPVectors(cushionImp[0],impulse);
+            cushionImp[0][1] += angChange1;
+            cushionImp[0][2] += angChange2;
+            
+            
+            impulses[i] = impulse;
+            velocities[i] = relVelo;
             angChanges1[i] = angChange1;
             angChanges2[i] = angChange2;
             
