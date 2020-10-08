@@ -381,8 +381,8 @@ var part = function(x, y){
     this.len = 0;
     this.width = 10;//length is from base part to tipPart
     this.goalAngVelo = 0;//PI/69
-    this.maxAngVelo = PI/69;
-    this.torqueMax = 10000;//10000;//max torque that can be supplied
+    this.maxAngVelo = PI/69*3;
+    this.torqueMax = 5000;//10000;//max torque that can be supplied
     //status
     this.vertexs = new pointStorage();//corners of part
     this.pos = new PVector(0, 0);//center of part
@@ -3203,7 +3203,7 @@ body.prototype.activateTurns = function(){
     var originSB = this.subBodies[this.originP];
     for(var i = 0; i < this.parts.length; i++){
         var part = this.parts[i];
-        //part.torqueSup = part.torqueMax;
+        part.torqueSup = part.torqueMax;
         var sbody = this.subBodies[part.id];
         if(part.id !== this.originP && part.tipPart>=0){
             
@@ -3265,6 +3265,8 @@ body.prototype.activateTurns = function(){
             }
             
             var angApart = part.g_ang-relAng;
+            
+            
             if(abs(angApart)>abs(part.g_ang-relAng+2*PI)){
                 angApart=part.g_ang-relAng+2*PI;
             }
@@ -3273,13 +3275,14 @@ body.prototype.activateTurns = function(){
                 angApart=part.g_ang-relAng-2*PI;
             }
             
+            if(angApart*part.g_dirBias < 0){
+                //angApart+=2*PI*part.g_dirBias;
+            }
+            
             
             part.DEV_angDiff = angApart;
             var goalAngVelo = angApart;
-            
-            if(abs(goalAngVelo) >0.001){
-                originSB.rest = false;
-            }
+
             //var goalAngVelo = part.goalAngVelo; keyboard commands
             
             if(abs(goalAngVelo) > part.maxAngVelo){
@@ -3288,6 +3291,9 @@ body.prototype.activateTurns = function(){
                 }else{
                     goalAngVelo = -part.maxAngVelo;
                 }
+            }
+            else{
+                part.g_dirBias = 0;
             }
             
             
@@ -3354,7 +3360,7 @@ body.prototype.activateTurns = function(){
             //drawLines.push([originSB.com,addPVectors(originSB.com,originSB.velo)]);
             
         }
-        part.torqueSup = part.torqueMax;
+        //part.torqueSup = part.torqueMax;
         
     }
 };
@@ -3427,7 +3433,7 @@ game.prototype.checkSelected = function(){
             
             var nrm = getNrmUV(ends[0],ends[1]);
             
-            var width = 4;
+            var width = 6;
     
             vertexs[0] = new PVector(ends[0].x-nrm.x*width/2,ends[0].y-nrm.y*width/2);
             vertexs[1] = new PVector(ends[0].x+nrm.x*width/2,ends[0].y+nrm.y*width/2);
@@ -3436,6 +3442,7 @@ game.prototype.checkSelected = function(){
             
             if(checkBounded(mousePos,vertexs)){
                 this.selected = [body.id, part.id];
+                part.g_dirBias = 0;
                 return true;
             }
             
@@ -3450,14 +3457,16 @@ body.prototype.saveGoals = function(){
         var part = this.parts[p];
         part.g_ang += part.g_angSum;
         
-        if(part.g_angSum>0){
-            part.g_dirBias = 1;
-        }
-        else if(part.g_angSum<0){
-            part.g_dirBias = -1;
-        }
-        else{
-            part.g_dirBias = 0;
+        if(part.g_dirBias === 0){
+            if(part.g_angSum>0){
+                part.g_dirBias = 1;
+            }
+            else if(part.g_angSum<0){
+                part.g_dirBias = -1;
+            }
+            else{
+                part.g_dirBias = 0;
+            }
         }
         part.g_angSum = 0;
         
@@ -3494,6 +3503,16 @@ game.prototype.enterControls = function(){
     if(!this.dragging){
         this.checkSelected();
     }
+    
+    /*
+    if(keys[0]){messes up one frame if only saved at the end
+        this.dragging = false;
+        for(var b = 0; b<this.actors.length; b++){
+            this.actors[b].saveGoals();
+        }
+    }
+    */
+    
     if((!mPress && this.dragging) || keys[0]){
         this.dragging = false;
         for(var b = 0; b<this.actors.length; b++){
@@ -4170,10 +4189,12 @@ var drawUI = function(){
     
     fill(255, 0, 0);
     text('Instructions:',10,20);
-    text('Drag a bone to command its limb',10,35);
-    text('Hold Space to unpause',10,50);
-    text('Press R to reset bones',10,65);
-    text('Press 1 or 2 to restart Sim',10,80);
+    text('-Drag a bone to command its limb',10,35);
+    text('-Hold Space to unpause',10,50);
+    text('-Press R to reset bones',10,65);
+    text('-Press . to advance a frame',10,80);
+    text('-Press 1 or 2 to select number',10,95);
+    text(' of bodies, and restart',10,110);
 };
 
 
